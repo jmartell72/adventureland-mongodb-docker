@@ -8,7 +8,8 @@
 ##
 ## Requires a .env next to this file with at least:
 ##   DOMAINNAME=example.com
-##   GHCR_IMAGE=ghcr.io/<owner>/adventureland-mongodb-docker:latest
+## Optionally override the image (defaults to the same as docker-compose.yml):
+##   GHCR_IMAGE=ghcr.io/jmartell72/adventureland-mongodb-docker:latest
 
 services:
   mongo:
@@ -17,15 +18,14 @@ services:
       internal:
 
   app:
-    image: ${GHCR_IMAGE:-ghcr.io/owner/adventureland-mongodb-docker:latest}
+    # image, MONGODB_URI, and GAME_SERVER_KEY come from docker-compose.yml —
+    # only prod-specific settings are added/overridden here.
     container_name: al_app
     ports: !reset [] # Traefik reaches the container directly over t2_proxy
     networks:
       t2_proxy:
       internal:
     environment:
-      MONGODB_URI: mongodb://mongo:27017/adventureland
-      GAME_SERVER_KEY: local
       BASE_URL: https://al.${DOMAINNAME}
       GAME_SERVER_ADDRESS: al-ws.${DOMAINNAME}
       PUBLIC_SECURE: "true"

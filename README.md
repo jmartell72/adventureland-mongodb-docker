@@ -57,7 +57,8 @@ Create a `.env` next to the compose files:
 
 ```sh
 DOMAINNAME=example.com
-GHCR_IMAGE=ghcr.io/<owner>/<repo>:latest
+# Optional — defaults to ghcr.io/jmartell72/adventureland-mongodb-docker:latest (same as docker-compose.yml)
+#GHCR_IMAGE=ghcr.io/jmartell72/adventureland-mongodb-docker:latest
 ```
 
 Then, on the host (pulls the image GitHub Actions already built — no build tools needed there):

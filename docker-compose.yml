@@ -12,7 +12,7 @@ services:
         ADVENTURELAND_REF: ${ADVENTURELAND_REF:-main}
         COMMON_ENGINE_REF: ${COMMON_ENGINE_REF:-main}
         SECRETSANDCONFIG_REF: ${SECRETSANDCONFIG_REF:-main}
-    image: ghcr.io/${GITHUB_REPOSITORY:-owner/adventureland-mongodb-docker}:latest
+    image: ${GHCR_IMAGE:-ghcr.io/jmartell72/adventureland-mongodb-docker:latest}
     restart: unless-stopped
     depends_on:
       - mongo
