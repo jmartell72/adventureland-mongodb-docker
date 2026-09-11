@@ -1,31 +1,38 @@
-## Production overlay: Traefik-fronted, no host ports published.
+## Standalone production compose file — Traefik-fronted, pulls the image
+## GitHub Actions already built (no build tools needed on the host).
+## Copy this file alone to your server; it doesn't depend on docker-compose.yml.
+##
 ## Rename the "al" / "al-ws" subdomain labels below to whatever you want —
 ## they just need to match two real DNS records pointed at this host.
 ##
-## Usage (pulls the image GitHub Actions already built — don't rebuild on the host):
-##   docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
-##   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
-##
 ## Requires a .env next to this file with at least:
 ##   DOMAINNAME=example.com
-## Optionally override the image (defaults to the same as docker-compose.yml):
-##   GHCR_IMAGE=ghcr.io/jmartell72/adventureland-mongodb-docker:latest
+##
+## Usage:
+##   docker compose -f docker-compose.prod.yml pull
+##   docker compose -f docker-compose.prod.yml up -d
 
 services:
   mongo:
-    ports: !reset [] # internal-only in prod; no host publish (requires Compose v2.24+)
+    image: mongo:7
+    restart: unless-stopped
     networks:
       internal:
+    volumes:
+      - mongo-data:/data/db
 
   app:
-    # image, MONGODB_URI, and GAME_SERVER_KEY come from docker-compose.yml —
-    # only prod-specific settings are added/overridden here.
+    image: ${GHCR_IMAGE:-ghcr.io/jmartell72/adventureland-mongodb-docker:latest}
     container_name: al_app
-    ports: !reset [] # Traefik reaches the container directly over t2_proxy
+    restart: unless-stopped
+    depends_on:
+      - mongo
     networks:
       t2_proxy:
       internal:
     environment:
+      MONGODB_URI: mongodb://mongo:27017/adventureland
+      GAME_SERVER_KEY: local
       BASE_URL: https://al.${DOMAINNAME}
       GAME_SERVER_ADDRESS: al-ws.${DOMAINNAME}
       PUBLIC_SECURE: "true"

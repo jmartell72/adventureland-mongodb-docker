@@ -40,8 +40,10 @@ The package is public, so this works with no login.
 
 ## Production deployment (Traefik)
 
-`docker-compose.prod.yml` is an overlay for a host already running Traefik with an external proxy network. It:
+`docker-compose.prod.yml` is a standalone file — copy just that one file to a host already running Traefik with an
+external proxy network and run it as-is; it doesn't reference or depend on `docker-compose.yml`. It:
 
+- Pulls the published image (no build tools needed on the host) and runs Mongo alongside it.
 - Joins the app container to your `t2_proxy` network (for Traefik) and an `internal` network (for Mongo) — no ports
   are published to the host.
 - Adds two routers, since the web backend (Express, `:8090`) and the game server (Socket.IO, `:7192`) are separate
@@ -53,19 +55,19 @@ The package is public, so this works with no login.
   `trust proxy` enabled and listens plain HTTP internally, so Traefik terminating TLS in front of it is the intended
   setup.
 
-Create a `.env` next to the compose files:
+Create a `.env` next to `docker-compose.prod.yml`:
 
 ```sh
 DOMAINNAME=example.com
-# Optional — defaults to ghcr.io/jmartell72/adventureland-mongodb-docker:latest (same as docker-compose.yml)
+# Optional — defaults to ghcr.io/jmartell72/adventureland-mongodb-docker:latest
 #GHCR_IMAGE=ghcr.io/jmartell72/adventureland-mongodb-docker:latest
 ```
 
-Then, on the host (pulls the image GitHub Actions already built — no build tools needed there):
+Then, on the host:
 
 ```sh
-docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d
 ```
 
 Since the image auto-updates in GHCR (see above), redeploying is just re-running those two commands — add a cron
