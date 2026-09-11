@@ -16,20 +16,52 @@
 ##   docker compose -f docker-compose.prod.yml up -d
 
 services:
+  # A single-node replica set, not a plain standalone instance: the app uses
+  # multi-document transactions (tx_get/tx_save in common_engine), which
+  # MongoDB only allows on a replica set or mongos ("Transaction numbers are
+  # only allowed on a replica set member or mongos" otherwise).
   mongo:
     image: mongo:7
     restart: unless-stopped
+    command: ["--replSet", "rs0", "--bind_ip_all"]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
     networks:
       internal:
     volumes:
       - ${DATA_DIR:-/home/docker/adventureland}/mongo:/data/db
+
+  # One-shot: initializes the replica set on first run, no-ops on every run
+  # after (checked via rs.status()). Exits once done; app waits on that.
+  mongo-init:
+    image: mongo:7
+    restart: "no"
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      internal:
+    entrypoint:
+      - mongosh
+      - --host
+      - mongo
+      - --quiet
+      - --eval
+      - |
+        try { rs.status(); print("replica set already initialized"); }
+        catch (e) { rs.initiate({_id: "rs0", members: [{_id: 0, host: "mongo:27017"}]}); print("replica set initiated"); }
 
   app:
     image: ${GHCR_IMAGE:-ghcr.io/jmartell72/adventureland-mongodb-docker:latest}
     container_name: al_app
     restart: unless-stopped
     depends_on:
-      - mongo
+      mongo-init:
+        condition: service_completed_successfully
     networks:
       t2_proxy:
       internal:
@@ -39,7 +71,7 @@ services:
       # restarts and rebuilds. See scripts/entrypoint.sh and patch-config.js.
       - ${DATA_DIR:-/home/docker/adventureland}/secretsandconfig:/app/secretsandconfig
     environment:
-      MONGODB_URI: mongodb://mongo:27017/adventureland
+      MONGODB_URI: mongodb://mongo:27017/adventureland?replicaSet=rs0
       GAME_SERVER_KEY: local
       BASE_URL: https://al.${DOMAINNAME}
       GAME_SERVER_ADDRESS: al-ws.${DOMAINNAME}

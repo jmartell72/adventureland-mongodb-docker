@@ -30,6 +30,12 @@ with randomized dev defaults, which is fine for local use — see the
 [upstream README](https://github.com/kaansoral/adventureland_mongodb#readme) for production configuration
 (Stripe/Steam/Discord/SES keys, TLS, etc.) if you want those features.
 
+Mongo runs as a single-node **replica set**, not a plain standalone instance — the app uses multi-document
+transactions (`tx_get`/`tx_save` in `common_engine`, used by signup and other flows), which MongoDB only allows on a
+replica set or `mongos`; a standalone instance fails with `Transaction numbers are only allowed on a replica set
+member or mongos`. The `mongo-init` service initializes the replica set on first run only (it checks `rs.status()`
+and no-ops if already done) and the app waits for it to finish before starting.
+
 ## Pulling the published image
 
 ```sh
