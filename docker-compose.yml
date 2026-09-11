@@ -43,6 +43,11 @@ services:
         SECRETSANDCONFIG_REF: ${SECRETSANDCONFIG_REF:-main}
     image: ${GHCR_IMAGE:-ghcr.io/jmartell72/adventureland-mongodb-docker:latest}
     restart: unless-stopped
+    # The game server deregisters itself from MongoDB as part of its own
+    # graceful shutdown (see scripts/entrypoint.sh) - give it real time to
+    # do that before Docker SIGKILLs it, or the next boot refuses to start
+    # for up to 12 minutes ("Server Exists").
+    stop_grace_period: 30s
     depends_on:
       mongo-init:
         condition: service_completed_successfully

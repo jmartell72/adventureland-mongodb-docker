@@ -96,3 +96,31 @@ Notes:
   already have a default resolver for these routers.
 - A static IP on `t2_proxy` isn't set — add `ipv4_address:` under the `app` service's `t2_proxy` network entry if
   your setup expects one; pick an address outside your other containers' range.
+
+## Troubleshooting
+
+**Container stuck restart-looping, logs show `Server Exists: SR_<region><name>`.** The game server refuses to
+start if it thinks another instance with the same ID is already running — it checks MongoDB and bails out if that
+server's record is `online: true` and was updated within the last 12 minutes. This is meant to prevent two
+instances fighting over the same ID, but it means an *ungraceful* shutdown (SIGKILL, OOM, a host crash, or —
+before this was fixed — a `stop_grace_period` too short for the app's own shutdown sequence to finish) leaves a
+stale record, and the next boot has to wait out that 12-minute window. `entrypoint.sh` and `stop_grace_period: 30s`
+are meant to prevent this by giving the game server real time to deregister on every normal stop/restart, but if
+you still hit it (e.g. `docker kill`, an OOM, a host reboot), you can clear it immediately instead of waiting:
+
+```sh
+docker exec <mongo-container> mongosh --quiet adventureland --eval \
+  'db.server.updateOne({_id:"SR_USI"}, {$set:{online:false}})'
+```
+
+(`SR_USI` is `SR_` + region + name, e.g. `SR_USI` for the default `local` server def — check `db.server.find()` if
+you changed those.) The container will start cleanly on its next restart attempt.
+
+**Fresh database — "Game hasn't loaded yet" and characters won't spawn.** A brand-new MongoDB has no map/world
+data at all (only what signup/character-creation create), and the client waits for map data that will never
+arrive. See the upstream README's ["Seeding Game Data"](https://github.com/kaansoral/adventureland_mongodb#seeding-game-data)
+section — import the RDBMS dump via the `agentic/_migrate_rdbms.py` script (needs Python 3 + `pymongo`, run from a
+container or host that can reach `mongo:27017`). This only touches `map`/`upload` collections in that dump as of
+writing, not accounts, so it's safe to run against a database that already has real users. **The game server loads
+map geometry into memory once at boot** (`node/server.js`'s `init_game()`), so restart the `app` container after
+importing.
