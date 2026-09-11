@@ -1,0 +1,27 @@
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+
+  app:
+    build:
+      context: .
+      args:
+        ADVENTURELAND_REF: ${ADVENTURELAND_REF:-main}
+        COMMON_ENGINE_REF: ${COMMON_ENGINE_REF:-main}
+        SECRETSANDCONFIG_REF: ${SECRETSANDCONFIG_REF:-main}
+    image: ghcr.io/${GITHUB_REPOSITORY:-owner/adventureland-mongodb-docker}:latest
+    restart: unless-stopped
+    depends_on:
+      - mongo
+    environment:
+      MONGODB_URI: mongodb://mongo:27017/adventureland
+      GAME_SERVER_KEY: local
+    ports:
+      - "8090:8090"
+      - "7192:7192"
+
+volumes:
+  mongo-data:
