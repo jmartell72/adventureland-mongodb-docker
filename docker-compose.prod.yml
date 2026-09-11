@@ -7,6 +7,9 @@
 ##
 ## Requires a .env next to this file with at least:
 ##   DOMAINNAME=example.com
+## All persistent state (Mongo data + the editable secretsandconfig files)
+## lives under $DATA_DIR on the host, default shown below:
+##   DATA_DIR=/home/docker/adventureland
 ##
 ## Usage:
 ##   docker compose -f docker-compose.prod.yml pull
@@ -19,7 +22,7 @@ services:
     networks:
       internal:
     volumes:
-      - mongo-data:/data/db
+      - ${DATA_DIR:-/home/docker/adventureland}/mongo:/data/db
 
   app:
     image: ${GHCR_IMAGE:-ghcr.io/jmartell72/adventureland-mongodb-docker:latest}
@@ -30,6 +33,11 @@ services:
     networks:
       t2_proxy:
       internal:
+    volumes:
+      # Editable config/secrets (Stripe, Discord, Steam keys, ACCESS_MASTER,
+      # etc.) — seeded from the image on first boot, then persists across
+      # restarts and rebuilds. See scripts/entrypoint.sh and patch-config.js.
+      - ${DATA_DIR:-/home/docker/adventureland}/secretsandconfig:/app/secretsandconfig
     environment:
       MONGODB_URI: mongodb://mongo:27017/adventureland
       GAME_SERVER_KEY: local
@@ -60,6 +68,3 @@ networks:
     external: true
   internal:
     internal: true
-
-volumes:
-  mongo-data:

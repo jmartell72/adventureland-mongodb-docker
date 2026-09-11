@@ -24,10 +24,17 @@ RUN git clone https://github.com/kaansoral/common_engine.git common \
     && cd common && git checkout "$COMMON_ENGINE_REF"
 
 # Config template, symlinked as ./secretsandconfig upstream. Ships with
-# randomized dev defaults per its README; mongodb_uri is rewritten at
-# container start (see entrypoint.sh) to point at $MONGODB_URI.
+# randomized dev defaults per its README; entrypoint.sh rewrites fields from
+# env vars at container start (see scripts/patch-config.js). Stashed a second
+# copy at .secretsandconfig-template: in production, secretsandconfig/ is
+# bind-mounted to a persistent host directory (see docker-compose.prod.yml),
+# which shadows this build-time clone, so entrypoint.sh seeds it from the
+# template on first boot. Any keys you add by hand there (Stripe, Discord,
+# etc.) survive rebuilds and restarts since patch-config.js only ever
+# mutates specific fields, not the whole file.
 RUN git clone https://github.com/kaansoral/adventureland_secretsandconfig.git secretsandconfig \
-    && cd secretsandconfig && git checkout "$SECRETSANDCONFIG_REF"
+    && cd secretsandconfig && git checkout "$SECRETSANDCONFIG_REF" && rm -rf .git \
+    && cd .. && cp -a secretsandconfig .secretsandconfig-template
 
 RUN npm install --omit=dev \
     && cd node && npm install --omit=dev

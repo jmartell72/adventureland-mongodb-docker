@@ -50,16 +50,24 @@ external proxy network and run it as-is; it doesn't reference or depend on `dock
   HTTP servers in the same container: one for `al.$DOMAINNAME`, one for `al-ws.$DOMAINNAME`. Rename both to whatever
   subdomains you want — they just need matching DNS records pointed at the host.
 - Sets `BASE_URL`, `GAME_SERVER_ADDRESS`, and `PUBLIC_SECURE=true` so the app generates correct HTTPS/WSS URLs and
-  secure cookies. These are applied at container start by `scripts/patch-config.js`, which rewrites the cloned
-  `secretsandconfig/options.js`/`keys.js` from env vars — no fork of that repo needed. The app already runs with
-  `trust proxy` enabled and listens plain HTTP internally, so Traefik terminating TLS in front of it is the intended
-  setup.
+  secure cookies. These are applied at container start by `scripts/patch-config.js`, which rewrites
+  `secretsandconfig/options.js`/`keys.js` from env vars. The app already runs with `trust proxy` enabled and listens
+  plain HTTP internally, so Traefik terminating TLS in front of it is the intended setup.
+- Persists all state under `$DATA_DIR` on the host (default `/home/docker/adventureland`), so a server reboot,
+  container recreation, or image update never loses anything:
+  - `$DATA_DIR/mongo` — the Mongo database (accounts, characters, map data, everything gameplay-related).
+  - `$DATA_DIR/secretsandconfig` — the config/secrets directory. On first boot (empty directory) it's seeded from
+    the image's built-in template; after that it's yours. Add real values directly in
+    `$DATA_DIR/secretsandconfig/keys.js` (Stripe, Steam, Discord, Amazon SES, `ACCESS_MASTER`, etc.) or
+    `options.js` — `patch-config.js` only ever overwrites the specific fields listed above on each restart, so
+    anything else you set by hand is preserved across restarts and image rebuilds.
 
 Create a `.env` next to `docker-compose.prod.yml`:
 
 ```sh
 DOMAINNAME=example.com
-# Optional — defaults to ghcr.io/jmartell72/adventureland-mongodb-docker:latest
+# Optional — defaults shown below
+#DATA_DIR=/home/docker/adventureland
 #GHCR_IMAGE=ghcr.io/jmartell72/adventureland-mongodb-docker:latest
 ```
 
