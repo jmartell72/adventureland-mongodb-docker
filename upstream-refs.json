@@ -1,5 +1,5 @@
 {
-  "adventureland_mongodb": "main",
-  "common_engine": "main",
-  "adventureland_secretsandconfig": "main"
+  "adventureland_mongodb": "b4b686a754a4b39f3764672c7ba5d9faa635f713",
+  "common_engine": "fa74fabf5d3782503712621e037bfb934ecb8439",
+  "adventureland_secretsandconfig": "6b3493be30abe367cfaf879a2d5ad370742e0866"
 }
