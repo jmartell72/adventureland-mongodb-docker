@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   check:
@@ -49,3 +50,13 @@ jobs:
           git add upstream-refs.json
           git commit -m "chore: bump upstream refs (automated)"
           git push
+
+      # A push made with the default GITHUB_TOKEN does not itself re-trigger
+      # other workflows (GitHub's anti-loop rule for the built-in token), so
+      # the build has to be dispatched explicitly here rather than relying on
+      # docker-build.yml's `on: push` trigger to fire.
+      - name: Trigger image build
+        if: steps.update.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run docker-build.yml --ref "${{ github.ref_name }}"
