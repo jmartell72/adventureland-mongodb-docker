@@ -3,10 +3,6 @@ set -euo pipefail
 
 cd /app
 
-if [ -n "${MONGODB_URI:-}" ]; then
-	sed -i "s#mongodb_uri: \"[^\"]*\"#mongodb_uri: \"${MONGODB_URI}\"#" secretsandconfig/keys.js
-fi
-
 node /app/scripts/patch-config.js
 
 node main.js &

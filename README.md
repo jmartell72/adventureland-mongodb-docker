@@ -36,5 +36,46 @@ with randomized dev defaults, which is fine for local use — see the
 docker pull ghcr.io/<owner>/<repo>:latest
 ```
 
-(Requires the package to be made accessible to your account, or authenticating with a PAT that has `read:packages`,
-since it's published from a private repository.)
+The package is public, so this works with no login.
+
+## Production deployment (Traefik)
+
+`docker-compose.prod.yml` is an overlay for a host already running Traefik with an external proxy network. It:
+
+- Joins the app container to your `t2_proxy` network (for Traefik) and an `internal` network (for Mongo) — no ports
+  are published to the host.
+- Adds two routers, since the web backend (Express, `:8090`) and the game server (Socket.IO, `:7192`) are separate
+  HTTP servers in the same container: one for `al.$DOMAINNAME`, one for `al-ws.$DOMAINNAME`. Rename both to whatever
+  subdomains you want — they just need matching DNS records pointed at the host.
+- Sets `BASE_URL`, `GAME_SERVER_ADDRESS`, and `PUBLIC_SECURE=true` so the app generates correct HTTPS/WSS URLs and
+  secure cookies. These are applied at container start by `scripts/patch-config.js`, which rewrites the cloned
+  `secretsandconfig/options.js`/`keys.js` from env vars — no fork of that repo needed. The app already runs with
+  `trust proxy` enabled and listens plain HTTP internally, so Traefik terminating TLS in front of it is the intended
+  setup.
+
+Create a `.env` next to the compose files:
+
+```sh
+DOMAINNAME=example.com
+GHCR_IMAGE=ghcr.io/<owner>/<repo>:latest
+```
+
+Then, on the host (pulls the image GitHub Actions already built — no build tools needed there):
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+```
+
+Since the image auto-updates in GHCR (see above), redeploying is just re-running those two commands — add a cron
+job or a `docker compose ... pull && docker compose ... up -d` on a timer if you want that automated too.
+
+Notes:
+
+- The compose file assumes a `chain-no-auth@file` Traefik middleware and an `https` entrypoint already exist in your
+  Traefik setup (matching the convention from your other services) — adjust the labels if yours are named
+  differently.
+- `tls.certresolver` is commented out, same as your other services; uncomment and set it if your Traefik doesn't
+  already have a default resolver for these routers.
+- A static IP on `t2_proxy` isn't set — add `ipv4_address:` under the `app` service's `t2_proxy` network entry if
+  your setup expects one; pick an address outside your other containers' range.

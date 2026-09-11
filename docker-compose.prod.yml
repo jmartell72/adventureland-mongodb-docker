@@ -1,0 +1,58 @@
+## Production overlay: Traefik-fronted, no host ports published.
+## Rename the "al" / "al-ws" subdomain labels below to whatever you want —
+## they just need to match two real DNS records pointed at this host.
+##
+## Usage (pulls the image GitHub Actions already built — don't rebuild on the host):
+##   docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
+##   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+##
+## Requires a .env next to this file with at least:
+##   DOMAINNAME=example.com
+##   GHCR_IMAGE=ghcr.io/<owner>/adventureland-mongodb-docker:latest
+
+services:
+  mongo:
+    ports: !reset [] # internal-only in prod; no host publish (requires Compose v2.24+)
+    networks:
+      internal:
+
+  app:
+    image: ${GHCR_IMAGE:-ghcr.io/owner/adventureland-mongodb-docker:latest}
+    container_name: al_app
+    ports: !reset [] # Traefik reaches the container directly over t2_proxy
+    networks:
+      t2_proxy:
+      internal:
+    environment:
+      MONGODB_URI: mongodb://mongo:27017/adventureland
+      GAME_SERVER_KEY: local
+      BASE_URL: https://al.${DOMAINNAME}
+      GAME_SERVER_ADDRESS: al-ws.${DOMAINNAME}
+      PUBLIC_SECURE: "true"
+    labels:
+      - "traefik.enable=true"
+      ## --- Web backend (Express, port 8090) ---
+      - "traefik.http.routers.al-web-rtr.entrypoints=https"
+      - "traefik.http.routers.al-web-rtr.rule=Host(`al.${DOMAINNAME}`)"
+      - "traefik.http.routers.al-web-rtr.tls=true"
+      #- "traefik.http.routers.al-web-rtr.tls.certresolver=dns-cloudflare"
+      - "traefik.http.routers.al-web-rtr.middlewares=chain-no-auth@file"
+      - "traefik.http.routers.al-web-rtr.service=al-web-svc"
+      - "traefik.http.services.al-web-svc.loadbalancer.server.port=8090"
+      ## --- Game server (Socket.IO, port 7192) ---
+      - "traefik.http.routers.al-ws-rtr.entrypoints=https"
+      - "traefik.http.routers.al-ws-rtr.rule=Host(`al-ws.${DOMAINNAME}`)"
+      - "traefik.http.routers.al-ws-rtr.tls=true"
+      #- "traefik.http.routers.al-ws-rtr.tls.certresolver=dns-cloudflare"
+      - "traefik.http.routers.al-ws-rtr.middlewares=chain-no-auth@file"
+      - "traefik.http.routers.al-ws-rtr.service=al-ws-svc"
+      - "traefik.http.services.al-ws-svc.loadbalancer.server.port=7192"
+
+networks:
+  t2_proxy:
+    external: true
+  internal:
+    internal: true
+
+volumes:
+  mongo-data:
