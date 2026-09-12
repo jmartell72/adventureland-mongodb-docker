@@ -23,7 +23,11 @@ var DEFAULTS = {
 	// design/monsters.js, not scaled here.
 	monster_respawn_multiplier: 1,
 	monster_aggro_multiplier: 1,
-	bots: {}, // { "CharacterName": { enabled: false, behavior: "farm", map: "main" } } — reserved for the bot runner
+	// { "charactername": { enabled, mode: "farm"|"merchant", map, party_with,
+	//   auto_sell, mluck_targets: ["charactername", ...] } } — see bots.js.
+	// Key is the character's lowercase stored name (matches the "character"
+	// collection's .name field); party_with/mluck_targets use the same form.
+	bots: {},
 };
 
 var emitter = new EventEmitter();

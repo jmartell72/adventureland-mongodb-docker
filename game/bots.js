@@ -7,19 +7,59 @@
 // adventure_functions.js's character_eval uses for admin/cron tooling, but
 // called directly at 127.0.0.1 here rather than through character_eval's
 // public-address round trip - see local_eval() below). Code eval'd there
-// runs directly in node/server.js's own scope, so player.socket.fs.skill(...)
-// reuses the real attack/target validation, not a reimplementation of it.
+// runs directly in node/server.js's own scope, so player.socket.fs.X(...)
+// (every socket.on(...) handler is mirrored there) reuses the real
+// attack/sell/party validation, not a reimplementation of it.
 //
 // Conservative by design: only engages monsters at or below the
 // character's level + 3, disengages below 40% HP, and does a plain
 // HP/rip reset on death rather than a full respawn-with-teleport (fine for
 // a private single-player instance; no PvP penalty to avoid here).
+//
+// Per-bot config (settings.json "bots" section):
+//   enabled     - connect/disconnect
+//   map         - farm-zone: teleport here once, right after connecting
+//                 (via the real transport_player_to(), not raw x/y)
+//   party_with  - stored (lowercase) character name to auto-party with,
+//                 checked/re-attempted every tick so it self-heals if that
+//                 character logs in later or the party gets disbanded.
+//                 Party XP-sharing is proportional to each member's own
+//                 damage output plus a flat bonus that scales with party
+//                 size (10-40%) - it doesn't grant passive income to a
+//                 member who isn't also fighting.
+//   auto_sell   - opt-in (default off): sell an item when inventory is
+//                 nearly full, using the game's own "computer" flag (see
+//                 below) to sell from anywhere rather than requiring the
+//                 bot to be standing at a shop. Off by default because it
+//                 sells indiscriminately (first unlocked, unblocked item),
+//                 not by any notion of "junk" - fine for a farming
+//                 character you don't care about, risky for one you do.
+//   mode        - "farm" (default): the combat AI below. "merchant": skips
+//                 combat entirely and instead keeps mluck_targets buffed
+//                 with Merchant's Luck (+luck, 1hr duration - see
+//                 design/conditions.js). Real mluck normally requires
+//                 merchant level 40 and 320-range proximity to the target
+//                 (design/skills.js); a private-server merchant bot exists
+//                 specifically to auto-refresh this on alts you never
+//                 actively play, so instead of walking it to each target
+//                 (impractical - they may be on any map, mid-fight) this
+//                 writes the exact same target.s.mluck condition object
+//                 the server itself writes on a normal, in-range cast
+//                 (node/server.js's "mluck" skill handler) - not a
+//                 reimplementation, a direct copy of that authoritative
+//                 shape, just without the range/level gate. `strong:true`
+//                 mirrors what the server sets when caster and target
+//                 share an account owner (skill handler's `target.owner ==
+//                 player.owner` branch) - true for any two of your own
+//                 characters, and it just means only you can overwrite it.
+//   mluck_targets - array of stored (lowercase) character names to keep
+//                 mluck'd. Only meaningful when mode is "merchant".
 var crypto = require("crypto");
 var { io } = require("socket.io-client");
 var options = require("./secretsandconfig/options");
 var settings = require("./settings.js");
 
-var connections = {}; // character_name -> { socket, connected }
+var connections = {}; // character_name -> { socket, connected, config }
 
 function server_def() {
 	return options.servers[process.env.GAME_SERVER_KEY || "local"];
@@ -30,10 +70,10 @@ async function mint_session(db, character_name) {
 	if (!character) throw new Error("no such character: " + character_name);
 	var token = crypto.randomBytes(10).toString("hex");
 	await db.collection("user").updateOne({ _id: character.owner }, { $push: { "info.auths": token } });
-	return { character_id: character._id, user_id: character.owner, auth: token };
+	return { character_id: character._id, user_id: character.owner, auth: token, display_name: character.info.name };
 }
 
-async function connect_bot(db, character_name) {
+async function connect_bot(db, character_name, config) {
 	if (connections[character_name]) return;
 	var session = await mint_session(db, character_name);
 	var def = server_def();
@@ -43,7 +83,7 @@ async function connect_bot(db, character_name) {
 		reconnection: true,
 		reconnectionDelay: 5000,
 	});
-	connections[character_name] = { socket: socket, connected: false };
+	connections[character_name] = { socket: socket, connected: false, display_name: session.display_name, config: config || {} };
 
 	// The server only accepts "auth" once this socket is a registered
 	// observer, which only happens after it emits "loaded" - and both must
@@ -71,13 +111,45 @@ async function connect_bot(db, character_name) {
 			});
 			// Optimistic: the server doesn't emit a distinct confirmation
 			// event on successful auth (only "entities" starts flowing).
-			// character_eval's own `if (player)` guard is what actually
-			// keeps the AI tick safe if auth is still in flight or failed -
+			// The eval calls below (and the tick's own `if (player)` guard)
+			// are what actually keep this safe if auth is still in flight -
 			// this flag only gates whether we bother ticking at all.
 			if (connections[character_name]) {
 				connections[character_name].connected = true;
 				console.log("[bots] " + character_name + " authenticated");
 			}
+			// One-time setup: give the character a "computer" item if it
+			// doesn't already have one. player.computer is NOT a persistent
+			// flag - it's recomputed from inventory contents on every stat
+			// refresh (node/server.js's per-tick recalculation scans
+			// player.items for a "computer"/"supercomputer" item and sets
+			// player.computer accordingly), so directly assigning
+			// `player.computer = true` gets silently overwritten within
+			// seconds. The real item is what actually persists, is what a
+			// human player would use for the same purpose, and is what
+			// lets shops/crafting/etc. work from anywhere on the map
+			// instead of requiring the bot to walk to one. Locked (l: "l")
+			// so auto_sell's "first unlocked item" scan can never sell it.
+			// Also does the farm-zone teleport, if configured - once, not
+			// every tick, so it doesn't fight the bot's own movement.
+			// calculate_player_stats() (which derives player.computer from
+			// inventory) only runs on specific triggers - login, level up,
+			// equip change - not every tick. It already ran once during
+			// this connection's own auth a moment ago, before the item
+			// existed, so without forcing it again here player.computer
+			// would stay stale (false) for the rest of the session.
+			var setup = [
+				"var has_computer = player.items.some(function(it){ return it && (it.name === 'computer' || it.name === 'supercomputer'); });",
+				"if (!has_computer && player.esize > 0) { add_item(player, { name: 'computer', l: 'l' }, {}); }",
+				"calculate_player_stats(player);",
+			];
+			if (config && config.map) {
+				setup.push("try { transport_player_to(player, " + JSON.stringify(config.map) + "); } catch (e) {}");
+			}
+			setup.push("output = { ok: true };");
+			local_eval(session.display_name, setup.join("\n")).catch(function (e) {
+				console.error("[bots] " + character_name + " setup eval failed: " + e.message);
+			});
 		}, 500);
 	});
 	socket.on("game_error", function (msg) {
@@ -108,24 +180,88 @@ function is_connected(character_name) {
 	return !!(connections[character_name] && connections[character_name].connected);
 }
 
-var AI_CODE = [
-	"if (player.rip) {",
-	"  player.hp = player.max_hp; player.mp = player.max_mp; player.rip = false;",
-	"} else {",
-	"  var pool = (instances[player.in] && instances[player.in].monsters) || {};",
-	"  var nearby = Object.values(pool).filter(function(m){",
-	"    return m && !m.dead && simple_distance(player, m) < 320 && (m.level || 1) <= (player.level || 1) + 3;",
-	"  });",
-	"  nearby.sort(function(a, b){ return simple_distance(player, a) - simple_distance(player, b); });",
-	"  if (player.hp > player.max_hp * 0.4) {",
-	"    if (!player.target || !pool[player.target]) { if (nearby[0]) player.target = nearby[0].id; }",
-	"    if (player.target && pool[player.target]) {",
-	"      try { player.socket.fs.skill({ name: 'attack', id: player.target }); } catch (e) {}",
-	"    }",
-	"  }",
-	"}",
-	"output = { hp: player.hp, max_hp: player.max_hp, rip: player.rip, target: player.target };",
-].join("\n");
+// Merchant mode: no combat, just keep the configured targets mluck'd. See
+// the "mode" doc comment above for why this writes the condition object
+// directly instead of calling the mluck skill handler.
+function build_merchant_code(target_display_names) {
+	var lines = [
+		"if (player.rip) {",
+		"  player.hp = player.max_hp; player.mp = player.max_mp; player.rip = false;",
+		"} else {",
+		"  var targets = " + JSON.stringify(target_display_names) + ";",
+		"  for (var i = 0; i < targets.length; i++) {",
+		"    var t = players[name_to_id[targets[i]]];",
+		"    if (!t || t === player) continue;",
+		"    var cond = t.s && t.s.mluck;",
+		// Refresh once under 5 minutes remain, rather than every tick -
+		// mirrors the skill handler's own "already strong from me" no-op
+		// check (node/server.js) so this doesn't fight a real player-cast
+		// mluck from someone else.
+		"    if (!cond || cond.ms < 5 * 60 * 1000 || cond.f === player.name) {",
+		"      t.s = t.s || {};",
+		"      t.s.mluck = { ms: G.conditions.mluck.duration, f: player.name, strong: true };",
+		"    }",
+		"  }",
+		"}",
+		"output = { hp: player.hp, max_hp: player.max_hp, rip: player.rip };",
+	];
+	return lines.join("\n");
+}
+
+// Built per-bot (not a single shared constant) since party_with/auto_sell
+// differ per character. partner_display_name is resolved to the live
+// name_to_id key (info.name) ahead of time, same reason local_eval's own
+// character_name argument has to be - see the note on start_ticking's
+// caller in main.js.
+function build_ai_code(config, partner_display_name) {
+	var lines = [
+		"if (player.rip) {",
+		"  player.hp = player.max_hp; player.mp = player.max_mp; player.rip = false;",
+		"} else {",
+	];
+	if (partner_display_name) {
+		lines.push(
+			"  var partner = players[name_to_id[" + JSON.stringify(partner_display_name) + "]];",
+			"  if (partner && (!player.party || player.party !== partner.party)) {",
+			"    try {",
+			"      partner.socket.fs.party({ event: 'invite', name: player.name });",
+			"      player.socket.fs.party({ event: 'accept', name: partner.name });",
+			"    } catch (e) {}",
+			"  }",
+		);
+	}
+	if (config && config.auto_sell) {
+		lines.push(
+			"  var free_slots = 0;",
+			"  for (var i = 0; i < player.items.length; i++) if (!player.items[i]) free_slots++;",
+			"  if (free_slots <= 2) {",
+			"    for (var i = 0; i < player.items.length; i++) {",
+			"      var it = player.items[i];",
+			"      if (it && !it.l && !it.b) {",
+			"        try { player.socket.fs.sell({ num: i, quantity: it.q || 1 }); } catch (e) {}",
+			"        break;",
+			"      }",
+			"    }",
+			"  }",
+		);
+	}
+	lines.push(
+		"  var pool = (instances[player.in] && instances[player.in].monsters) || {};",
+		"  var nearby = Object.values(pool).filter(function(m){",
+		"    return m && !m.dead && simple_distance(player, m) < 320 && (m.level || 1) <= (player.level || 1) + 3;",
+		"  });",
+		"  nearby.sort(function(a, b){ return simple_distance(player, a) - simple_distance(player, b); });",
+		"  if (player.hp > player.max_hp * 0.4) {",
+		"    if (!player.target || !pool[player.target]) { if (nearby[0]) player.target = nearby[0].id; }",
+		"    if (player.target && pool[player.target]) {",
+		"      try { player.socket.fs.skill({ name: 'attack', id: player.target }); } catch (e) {}",
+		"    }",
+		"  }",
+		"}",
+		"output = { hp: player.hp, max_hp: player.max_hp, rip: player.rip, target: player.target };",
+	);
+	return lines.join("\n");
+}
 
 // NOT using adventure_functions.js's character_eval here: it builds its eval
 // URL from the server's *public* address (server.address/api_path in
@@ -151,15 +287,28 @@ async function local_eval(character_name, code) {
 
 // get_display_name(stored_name) resolves settings.json's lowercase key
 // (character.name) to the live name_to_id lookup key (character.info.name,
-// original casing) - see the [private fork] note on start_ticking's caller
-// in main.js for why these two differ.
+// original casing) - works for any stored name, not just the bot's own, so
+// it also resolves party_with/mluck_targets entries (which are stored the
+// same way).
 function start_ticking(get_display_name) {
 	setInterval(async function () {
 		for (var name in connections) {
 			if (!is_connected(name)) continue;
 			try {
 				var display_name = await get_display_name(name);
-				if (display_name) await local_eval(display_name, AI_CODE);
+				if (!display_name) continue;
+				var config = connections[name].config || {};
+				if (config.mode === "merchant") {
+					var target_names = [];
+					for (var t = 0; t < (config.mluck_targets || []).length; t++) {
+						var target_display_name = await get_display_name(config.mluck_targets[t]);
+						if (target_display_name) target_names.push(target_display_name);
+					}
+					await local_eval(display_name, build_merchant_code(target_names));
+					continue;
+				}
+				var partner_display_name = config.party_with ? await get_display_name(config.party_with) : null;
+				await local_eval(display_name, build_ai_code(config, partner_display_name));
 			} catch (e) {
 				console.error("[bots] tick error for " + name, e.message);
 			}
@@ -172,10 +321,12 @@ async function sync_with_settings(db) {
 	for (var name in desired) {
 		if (desired[name] && desired[name].enabled && !connections[name]) {
 			try {
-				await connect_bot(db, name);
+				await connect_bot(db, name, desired[name]);
 			} catch (e) {
 				console.error("[bots] connect failed for " + name, e.message);
 			}
+		} else if (desired[name] && connections[name]) {
+			connections[name].config = desired[name]; // pick up map/party_with/auto_sell edits live
 		}
 	}
 	for (var name in connections) {

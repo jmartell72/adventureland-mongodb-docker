@@ -185,26 +185,84 @@ function admin_panel_html(s, saved, backup_status, characters) {
 
 	<form method="post" action="/admin/panel/bots">
 		<fieldset>
-			<legend>Bots (conservative AI: attacks nearby monsters up to character level + 3, disengages below 40% HP)</legend>
+			<legend>Bots</legend>
+			<div class="hint">Farm mode: conservative AI, attacks nearby monsters up to character level + 3, disengages below 40% HP. Merchant mode: no combat, keeps the selected mluck targets buffed on a timer.</div>
 			${
 				characters.length
 					? characters
 							.map(function (c) {
-								var enabled = !!(s.bots[c.name] && s.bots[c.name].enabled);
+								var cfg = s.bots[c.name] || {};
+								var enabled = !!cfg.enabled;
+								var mode = cfg.mode === "merchant" ? "merchant" : "farm";
 								var live = bots.is_connected(c.name);
+								var other_names = characters.filter(function (o) {
+									return o.name !== c.name;
+								});
+								var select_size = Math.min(4, Math.max(2, other_names.length || 1));
 								return (
+									'<div style="border:1px solid #444; border-radius:6px; padding:8px; margin-bottom:8px;">' +
 									'<label style="display:flex; align-items:center; gap:8px;">' +
 									'<input type="checkbox" name="bot_' +
 									esc(c.name) +
 									'" ' +
 									(enabled ? "checked" : "") +
 									">" +
+									"<b>" +
 									esc(c.name) +
+									"</b>" +
 									" (Lv." +
 									esc(c.level || 1) +
 									")" +
-									(enabled ? (live ? ' <span style="color:#7d7">connected</span>' : ' <span style="color:#dd7">connecting…</span>') : "") +
-									"</label>"
+									(enabled ? (live ? ' <span style="color:#7d7">connected</span>' : ' <span style="color:#dd7">connecting...</span>') : "") +
+									"</label>" +
+									'<div style="display:flex; flex-wrap:wrap; gap:12px; margin-top:6px;">' +
+									'<label>Mode<br><select name="mode_' +
+									esc(c.name) +
+									'"><option value="farm"' +
+									(mode === "farm" ? " selected" : "") +
+									'>Farm</option><option value="merchant"' +
+									(mode === "merchant" ? " selected" : "") +
+									">Merchant</option></select></label>" +
+									'<label>Farm-zone map<br><input type="text" name="map_' +
+									esc(c.name) +
+									'" value="' +
+									esc(cfg.map || "") +
+									'" placeholder="e.g. main"></label>' +
+									'<label>Party with<br><select name="party_' +
+									esc(c.name) +
+									'"><option value="">(none)</option>' +
+									other_names
+										.map(function (o) {
+											return (
+												'<option value="' +
+												esc(o.name) +
+												'"' +
+												(cfg.party_with === o.name ? " selected" : "") +
+												">" +
+												esc(o.name) +
+												"</option>"
+											);
+										})
+										.join("") +
+									"</select></label>" +
+									'<label style="display:flex; align-items:center; gap:6px;"><input type="checkbox" name="autosell_' +
+									esc(c.name) +
+									'" ' +
+									(cfg.auto_sell ? "checked" : "") +
+									"> Auto-sell when inventory nearly full</label>" +
+									'<label>Mluck targets (merchant mode)<br><select name="mlucktargets_' +
+									esc(c.name) +
+									'" multiple size="' +
+									select_size +
+									'" style="min-width:140px">' +
+									other_names
+										.map(function (o) {
+											var selected = (cfg.mluck_targets || []).indexOf(o.name) !== -1;
+											return '<option value="' + esc(o.name) + '"' + (selected ? " selected" : "") + ">" + esc(o.name) + "</option>";
+										})
+										.join("") +
+									"</select></label>" +
+									"</div></div>"
 								);
 							})
 							.join("")
@@ -250,7 +308,16 @@ app.post("/admin/panel/bots", async (req, res) => {
 	var characters = await db.collection("character").find({}, { projection: { name: 1 } }).toArray();
 	var bots_config = {};
 	characters.forEach(function (c) {
-		bots_config[c.name] = { enabled: !!body["bot_" + c.name] };
+		var mlucktargets_raw = body["mlucktargets_" + c.name];
+		var mluck_targets = Array.isArray(mlucktargets_raw) ? mlucktargets_raw : mlucktargets_raw ? [mlucktargets_raw] : [];
+		bots_config[c.name] = {
+			enabled: !!body["bot_" + c.name],
+			mode: body["mode_" + c.name] === "merchant" ? "merchant" : "farm",
+			map: (body["map_" + c.name] || "").trim(),
+			party_with: body["party_" + c.name] || "",
+			auto_sell: !!body["autosell_" + c.name],
+			mluck_targets: mluck_targets,
+		};
 	});
 	settings.update({ bots: bots_config });
 	res.redirect("/admin/panel");
