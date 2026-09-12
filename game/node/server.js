@@ -11631,6 +11631,21 @@ function init_socket_io(socket_server) {
 					invitations[player.name] = {};
 				}
 				invitations[player.name][invited.id] = 1;
+				// [private fork] Auto-accept when inviting one of your own
+				// characters - same account, no reason to require manually
+				// switching to the other one and clicking accept. Goes
+				// through invited.socket.fs.party(), the exact same
+				// handler this same "party" event would run if the
+				// invited character's own client called "accept" - not a
+				// reimplementation, so party_full/already_in_party/etc.
+				// all still apply exactly as normal. Only fires for a
+				// shared owner, so inviting an actual other player is
+				// unaffected.
+				if (invited.owner === player.owner) {
+					try {
+						invited.socket.fs.party({ event: "accept", name: player.name });
+					} catch (e) {}
+				}
 			}
 			if (data.event == "request") {
 				// if(player.party) { return; }
