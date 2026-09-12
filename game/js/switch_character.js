@@ -1,39 +1,69 @@
-// [private fork] Switch which owned character is the foreground (top-level)
-// view, without dropping whichever one you were just playing if it has
-// CODE:ACTIVE. Standalone widget (own DOM, own polling), same pattern as
+// [private fork] Leave the current character for the character-selection
+// screen, backgrounding it first (if it has CODE:Active) so it keeps
+// running instead of disconnecting. Standalone widget, same pattern as
 // event_hud.js/fast_travel.js.
 //
-// How it actually works, reusing real primitives (nothing new server-side):
-//   - log_in(user, character_id, auth) (js/game.js) re-authenticates the
-//     SAME already-open socket as a different owned character - it's a
-//     same-page transition, not a navigation (checked: it only requires an
-//     existing `socket`, then emits "auth"; no window.location write
-//     anywhere in it). That's what makes backgrounding-then-switching work
-//     at all: nothing in the DOM gets torn down.
-//   - start_character_runner(name, code_slot) (js/functions.js) is the
-//     same function the game's own "control up to 4 characters" feature
-//     uses to run an owned character in a hidden background iframe
-//     (appended to #iframelist, which log_in's same-page transition never
-//     touches). Called on the character you're LEAVING, before switching,
-//     it keeps that character's CODE running exactly the way running it
-//     as an extra background character normally does.
-//   - owned_character(name)/window.X.characters is the same account-wide
-//     character list start_character_runner itself reads from.
+// Earlier version tried to re-authenticate the existing socket as a
+// different character directly via log_in() - looked right from
+// js/game.js's own source (log_in only checks `if (!socket)`), but broke
+// in real use ("Connecting..." forever). The actual reason, found in
+// node/server.js's "auth" handler:
+//   if (!server.live || !observers[socket.id] || players[socket.id]) return;
+// A socket that's already authenticated as a player (players[socket.id]
+// truthy) silently no-ops on a second "auth" - no error, no response,
+// nothing. There's no supported way to re-authenticate an already-playing
+// socket as someone else; a fresh socket is required, which means a page
+// navigation. So: background the outgoing character (start_character_runner
+// - the same mechanism the game's own "control up to 4 characters" feature
+// uses, appending a hidden iframe to #iframelist), then navigate to
+// base_url - the exact same navigation the game's own built-in
+// "/disconnect" chat command uses to leave your character for the
+// selection screen (js/functions.js: `if (!name) window.location = base_url;`
+// under the "disconnect" command). You then pick the next character from
+// that normal screen - iframes are children of the page, so a background
+// runner never survives a navigation either way; only the fresh page load
+// on the OTHER side of it can re-open them, which is what
+// restore_pending_runners() below does.
 (function () {
-	function switch_character(target_name) {
-		if (typeof owned_character !== "function" || typeof log_in !== "function") return;
-		var owned = owned_character(target_name);
-		if (!owned) return add_log && add_log("No such character: " + target_name, "gray");
-		if (typeof character !== "undefined" && character && character.code && character.name.toLowerCase() !== owned.name.toLowerCase()) {
+	var PENDING_KEY = "aland_switch_pending_runners";
+
+	function switch_character() {
+		var pending = [];
+		try {
+			pending = JSON.parse(localStorage.getItem(PENDING_KEY) || "[]");
+		} catch (e) {}
+		if (typeof character !== "undefined" && character && character.code) {
 			try {
 				start_character_runner(character.name, typeof code_slot !== "undefined" ? code_slot : "");
+				pending.push({ name: character.name, code_slot: typeof code_slot !== "undefined" ? code_slot : "" });
+				localStorage.setItem(PENDING_KEY, JSON.stringify(pending));
 			} catch (e) {
 				console.error("[switch_character] failed to background " + character.name, e);
 			}
 		}
-		log_in(user_id, owned.id, user_auth);
+		window.location.href = base_url;
 	}
 	window.switch_character = switch_character;
+
+	function restore_pending_runners() {
+		if (typeof character === "undefined" || !character || typeof start_character_runner !== "function") return;
+		var pending = [];
+		try {
+			pending = JSON.parse(localStorage.getItem(PENDING_KEY) || "[]");
+		} catch (e) {}
+		if (!pending.length) return;
+		try {
+			localStorage.removeItem(PENDING_KEY);
+		} catch (e) {}
+		pending.forEach(function (p) {
+			if (!p || !p.name || p.name.toLowerCase() === character.name.toLowerCase()) return;
+			try {
+				start_character_runner(p.name, p.code_slot);
+			} catch (e) {
+				console.error("[switch_character] failed to restore runner " + p.name, e);
+			}
+		});
+	}
 
 	var el = null;
 	function ensure_element() {
@@ -44,42 +74,17 @@
 			"position:fixed; top:64px; left:50%; transform:translateX(-50%); z-index:150;" +
 			"background:rgba(0,0,0,0.7); color:#fff; font-family:monospace; font-size:12px;" +
 			"padding:3px 8px; border-radius:6px; white-space:nowrap;" +
-			"border:1px solid rgba(255,255,255,0.15); display:none;";
-		var select = document.createElement("select");
-		select.id = "switch-character-select";
-		select.style.cssText = "font-family:monospace; font-size:12px; margin-right:4px; max-width:160px;";
-		var go = document.createElement("button");
-		go.textContent = "Switch";
-		go.style.cssText = "font-family:monospace; font-size:12px; cursor:pointer;";
-		go.onclick = function () {
-			if (select.value) switch_character(select.value);
-		};
-		el.appendChild(select);
-		el.appendChild(go);
+			"border:1px solid rgba(255,255,255,0.15); display:none; cursor:pointer;";
+		el.textContent = "Switch Character";
+		el.onclick = switch_character;
 		document.body.appendChild(el);
 		return el;
 	}
 
-	function populate(select) {
-		if (typeof X === "undefined" || !X || !is_array(X.characters)) return;
-		var present = {};
-		for (var i = 0; i < select.options.length; i++) present[select.options[i].value] = true;
-		X.characters.forEach(function (c) {
-			if (character && c.name.toLowerCase() === character.name.toLowerCase()) return;
-			if (present[c.name]) return;
-			var option = document.createElement("option");
-			option.value = c.name;
-			option.textContent = c.name + " (Lv." + c.level + ")";
-			select.appendChild(option);
-		});
-	}
-
 	function poll() {
-		if (typeof character === "undefined" || !character || typeof X === "undefined" || !X) return;
-		var node = ensure_element();
-		var select = document.getElementById("switch-character-select");
-		populate(select);
-		node.style.display = select.options.length ? "block" : "none";
+		restore_pending_runners();
+		if (typeof character === "undefined" || !character) return;
+		ensure_element().style.display = "block";
 	}
 
 	setInterval(poll, 3000);

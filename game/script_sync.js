@@ -4,34 +4,40 @@
 // CODE editor.
 //
 // Layout:
-//   src/<charactername>/active.js  - that character's default/live code.
-//   src/_library/<scriptname>.js   - account-wide saved scripts, not tied
-//                                    to any one character (the game itself
-//                                    already supports this: up to 100
-//                                    named slots per account, loadable into
-//                                    any character - this fork already had
-//                                    some saved this way before script_sync
-//                                    existed, e.g. "Upgrade Equipment").
-//                                    Owner account is resolved from
-//                                    whichever character folder(s) exist
-//                                    alongside it - fine for a private
-//                                    single-account server; there's no
-//                                    per-account subfolder because there's
-//                                    only ever one account here.
+//   src/<charactername>/active.js   - that character's default/live code.
+//   src/<charactername>/<other>.js  - any OTHER .js file in a character's
+//                                     own folder becomes a require_code()-
+//                                     able named script (see global.d.ts),
+//                                     e.g. src/kingmartell/go_shopping.js
+//                                     -> require_code("go_shopping"). Owned
+//                                     by that same character's account.
+//   src/_library/<scriptname>.js    - same thing, but for scripts not tied
+//                                     to any one character's folder. Owner
+//                                     account is resolved from whichever
+//                                     character folder(s) exist alongside
+//                                     it - fine for a private single-
+//                                     account server; there's no per-
+//                                     account subfolder because there's
+//                                     only ever one account here.
 //
-// Both write to exactly the same two places save_code_api (api.js) writes
-// to: an infoelement doc "IE_USERCODE-<owner>-<slot>" holds the code text,
-// and the separate per-user "IE_userdata-<owner>" doc's info.code_list
-// names/versions it (NOT the user account document - a real mistake caught
-// via live testing early on: get_user_data() reads a different document
-// than what save_code_api's own variable names suggest). For a character's
-// own slot, `slot` is that character's _id - js/game.js's login logic
-// falls back to the character's own id as the code slot to load when
-// nothing else was explicitly chosen, so it loads automatically on that
-// character's next connect. For a library script, `slot` is just the
-// filename - find_code_slot() (adventure_functions.js) matches a
-// load-by-name request against the slot key OR the stored display name,
-// so it doesn't need to be numeric.
+// Named scripts are account-wide either way (the game's own code_list
+// always is - there's no real per-character scoping to enforce), so where
+// you physically keep the file is purely organizational.
+//
+// All writes go to exactly the same two places save_code_api (api.js)
+// writes to: an infoelement doc "IE_USERCODE-<owner>-<slot>" holds the
+// code text, and the separate per-user "IE_userdata-<owner>" doc's
+// info.code_list names/versions it (NOT the user account document - a
+// real mistake caught via live testing early on: get_user_data() reads a
+// different document than what save_code_api's own variable names
+// suggest). For a character's own active.js, `slot` is that character's
+// _id - js/game.js's login logic falls back to the character's own id as
+// the code slot to load when nothing else was explicitly chosen, so it
+// loads automatically on that character's next connect. For any other
+// file, `slot` is just the filename - find_code_slot()
+// (adventure_functions.js) matches a load-by-name request (including
+// require_code()) against the slot key OR the stored display name, so it
+// doesn't need to be numeric.
 //
 // No live-reload of an already-connected session - same as saving from the
 // in-game editor.
@@ -98,18 +104,33 @@ async function write_code_slot(db, owner_id, slot, display_name, code) {
 	return next_version;
 }
 
-async function sync_character_active(db, char_dir_name) {
-	var full_path = path.join(SCRIPTS_ROOT, char_dir_name, "active.js");
-	if (!changed(full_path)) return;
+async function sync_character_folder(db, char_dir_name) {
 	var char_name = char_dir_name.toLowerCase();
-	var character = await db.collection("character").findOne({ name: char_name });
-	if (!character) {
-		console.error("[script_sync] no character named '" + char_name + "' (from " + char_dir_name + "/active.js) - skipping");
-		return;
+	var dir_path = path.join(SCRIPTS_ROOT, char_dir_name);
+	var files = list_js_files(dir_path);
+	if (!files.length) return;
+	var character = null;
+	var character_looked_up = false;
+	for (var i = 0; i < files.length; i++) {
+		var filename = files[i];
+		var full_path = path.join(dir_path, filename);
+		if (!changed(full_path)) continue;
+		if (!character_looked_up) {
+			character = await db.collection("character").findOne({ name: char_name });
+			character_looked_up = true;
+			if (!character) console.error("[script_sync] no character named '" + char_name + "' (from " + char_dir_name + "/" + filename + ") - skipping");
+		}
+		if (!character) continue;
+		var code = fs.readFileSync(full_path, "utf8");
+		if (filename === "active.js") {
+			var version = await write_code_slot(db, character.owner, "" + character._id, character.info.name, code);
+			console.log("[script_sync] synced " + char_dir_name + "/active.js -> " + character.info.name + "'s active slot (v" + version + ") - takes effect on next connect");
+		} else {
+			var script_name = path.basename(filename, ".js");
+			var libVersion = await write_code_slot(db, character.owner, script_name, script_name, code);
+			console.log("[script_sync] synced " + char_dir_name + "/" + filename + " -> saved script '" + script_name + "' (v" + libVersion + "), require_code(\"" + script_name + "\")");
+		}
 	}
-	var code = fs.readFileSync(full_path, "utf8");
-	var version = await write_code_slot(db, character.owner, "" + character._id, character.info.name, code);
-	console.log("[script_sync] synced " + char_dir_name + "/active.js -> " + character.info.name + "'s active slot (v" + version + ") - takes effect on next connect");
 }
 
 async function find_any_owner(db) {
@@ -127,7 +148,7 @@ async function sync_library_file(db, owner_id, filename) {
 	var script_name = path.basename(filename, ".js");
 	var code = fs.readFileSync(full_path, "utf8");
 	var version = await write_code_slot(db, owner_id, script_name, script_name, code);
-	console.log("[script_sync] synced _library/" + filename + " -> saved script '" + script_name + "' (v" + version + ")");
+	console.log("[script_sync] synced _library/" + filename + " -> saved script '" + script_name + "' (v" + version + "), require_code(\"" + script_name + "\")");
 }
 
 function start(db) {
@@ -139,7 +160,7 @@ function start(db) {
 		var char_dirs = list_character_dirs();
 		for (var i = 0; i < char_dirs.length; i++) {
 			try {
-				await sync_character_active(db, char_dirs[i]);
+				await sync_character_folder(db, char_dirs[i]);
 			} catch (e) {
 				console.error("[script_sync] sync failed for " + char_dirs[i], e.message);
 			}
