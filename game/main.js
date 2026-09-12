@@ -190,14 +190,14 @@ function admin_panel_html(s, saved, backup_status, characters) {
 	<form method="post" action="/admin/panel/bots">
 		<fieldset>
 			<legend>Bots</legend>
-			<div class="hint">Farm mode: conservative AI, attacks nearby monsters up to character level + 3, disengages below 40% HP. Merchant mode: no combat, keeps the selected mluck targets buffed on a timer.</div>
+			<div class="hint">Farm: conservative AI, attacks nearby monsters up to character level + 3, disengages below 40% HP. Companion: follows "Party with" (teleporting to their map if needed) and assists by copying their live target, falling back to farm behavior otherwise. Merchant: no combat, keeps the selected mluck targets buffed on a timer. Custom: runs your own code every tick (player already resolved, rip-recovery already handled).</div>
 			${
 				characters.length
 					? characters
 							.map(function (c) {
 								var cfg = s.bots[c.name] || {};
 								var enabled = !!cfg.enabled;
-								var mode = cfg.mode === "merchant" ? "merchant" : "farm";
+								var mode = ["farm", "companion", "merchant", "custom"].indexOf(cfg.mode) !== -1 ? cfg.mode : "farm";
 								var live = bots.is_connected(c.name);
 								var other_names = characters.filter(function (o) {
 									return o.name !== c.name;
@@ -224,9 +224,13 @@ function admin_panel_html(s, saved, backup_status, characters) {
 									esc(c.name) +
 									'"><option value="farm"' +
 									(mode === "farm" ? " selected" : "") +
-									'>Farm</option><option value="merchant"' +
+									'>Farm</option><option value="companion"' +
+									(mode === "companion" ? " selected" : "") +
+									'>Companion</option><option value="merchant"' +
 									(mode === "merchant" ? " selected" : "") +
-									">Merchant</option></select></label>" +
+									'>Merchant</option><option value="custom"' +
+									(mode === "custom" ? " selected" : "") +
+									">Custom</option></select></label>" +
 									'<label>Farm-zone map<br><input type="text" name="map_' +
 									esc(c.name) +
 									'" value="' +
@@ -266,6 +270,11 @@ function admin_panel_html(s, saved, backup_status, characters) {
 										})
 										.join("") +
 									"</select></label>" +
+									'<label style="flex-basis:100%;">Custom code (custom mode)<br><textarea name="customcode_' +
+									esc(c.name) +
+									'" rows="4" style="width:100%; box-sizing:border-box; font-family:monospace; background:#000; color:#eee; border:1px solid #555;" placeholder="player already resolved; rip-recovery already handled">' +
+									esc(cfg.custom_code || "") +
+									"</textarea></label>" +
 									"</div></div>"
 								);
 							})
@@ -314,13 +323,15 @@ app.post("/admin/panel/bots", async (req, res) => {
 	characters.forEach(function (c) {
 		var mlucktargets_raw = body["mlucktargets_" + c.name];
 		var mluck_targets = Array.isArray(mlucktargets_raw) ? mlucktargets_raw : mlucktargets_raw ? [mlucktargets_raw] : [];
+		var mode = body["mode_" + c.name];
 		bots_config[c.name] = {
 			enabled: !!body["bot_" + c.name],
-			mode: body["mode_" + c.name] === "merchant" ? "merchant" : "farm",
+			mode: ["farm", "companion", "merchant", "custom"].indexOf(mode) !== -1 ? mode : "farm",
 			map: (body["map_" + c.name] || "").trim(),
 			party_with: body["party_" + c.name] || "",
 			auto_sell: !!body["autosell_" + c.name],
 			mluck_targets: mluck_targets,
+			custom_code: body["customcode_" + c.name] || "",
 		};
 	});
 	settings.update({ bots: bots_config });

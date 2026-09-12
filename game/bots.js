@@ -34,9 +34,16 @@
 //                 sells indiscriminately (first unlocked, unblocked item),
 //                 not by any notion of "junk" - fine for a farming
 //                 character you don't care about, risky for one you do.
-//   mode        - "farm" (default): the combat AI below. "merchant": skips
-//                 combat entirely and instead keeps mluck_targets buffed
-//                 with Merchant's Luck (+luck, 1hr duration - see
+//   mode        - "farm" (default): the combat AI below, camps and attacks
+//                 whatever wanders into range. "companion": follows
+//                 party_with (teleporting to their map if they're
+//                 elsewhere, then nudging position toward them - no real
+//                 pathfinding, same crude-but-functional level as the rest
+//                 of this bot) and assists by copying their live .target
+//                 when they have one, falling back to the normal nearby-
+//                 monster attack otherwise. "merchant": skips combat
+//                 entirely and instead keeps mluck_targets buffed with
+//                 Merchant's Luck (+luck, 1hr duration - see
 //                 design/conditions.js). Real mluck normally requires
 //                 merchant level 40 and 320-range proximity to the target
 //                 (design/skills.js); a private-server merchant bot exists
@@ -52,8 +59,16 @@
 //                 share an account owner (skill handler's `target.owner ==
 //                 player.owner` branch) - true for any two of your own
 //                 characters, and it just means only you can overwrite it.
+//                 "custom": runs custom_code (a raw code string, same
+//                 scope as the admin executor's local_eval snippets - see
+//                 main.js) every tick instead of any of the above, with
+//                 rip-recovery still handled automatically first.
 //   mluck_targets - array of stored (lowercase) character names to keep
 //                 mluck'd. Only meaningful when mode is "merchant".
+//   custom_code - raw code string run every tick when mode is "custom".
+//                 `player` is already resolved (this character's own live
+//                 state) and the rip-recovery branch has already run, same
+//                 as every other mode.
 var crypto = require("crypto");
 var { io } = require("socket.io-client");
 var options = require("./secretsandconfig/options");
@@ -208,6 +223,19 @@ function build_merchant_code(target_display_names) {
 	return lines.join("\n");
 }
 
+// Runs instead of build_ai_code/build_merchant_code when mode is "custom" -
+// full user control, same eval scope every other bot mode already uses.
+function build_custom_code(config) {
+	return [
+		"if (player.rip) {",
+		"  player.hp = player.max_hp; player.mp = player.max_mp; player.rip = false;",
+		"} else {",
+		config && config.custom_code ? config.custom_code : "",
+		"}",
+		"output = { hp: player.hp, max_hp: player.max_hp, rip: player.rip, target: player.target };",
+	].join("\n");
+}
+
 // Built per-bot (not a single shared constant) since party_with/auto_sell
 // differ per character. partner_display_name is resolved to the live
 // name_to_id key (info.name) ahead of time, same reason local_eval's own
@@ -229,6 +257,30 @@ function build_ai_code(config, partner_display_name) {
 			"    } catch (e) {}",
 			"  }",
 		);
+		if (config && config.mode === "companion") {
+			lines.push(
+				// Different map/instance entirely - catch up before trying to
+				// do anything else. transport_player_to is the same real
+				// function the farm-zone teleport and fast_travel already use.
+				"  if (partner && player.in !== partner.in) {",
+				"    try { transport_player_to(player, instances[partner.in].map); } catch (e) {}",
+				"  } else if (partner) {",
+				// No real pathfinding (same crude level as the rest of this
+				// bot) - just nudge straight-line toward the leader, capped
+				// per tick so it reads as walking rather than teleporting.
+				"    var pdx = partner.x - player.x, pdy = partner.y - player.y;",
+				"    var pdist = Math.sqrt(pdx * pdx + pdy * pdy);",
+				"    if (pdist > 60) {",
+				"      var pstep = Math.min(150, pdist - 40);",
+				"      if (pstep > 0) {",
+				"        player.x += (pdx / pdist) * pstep;",
+				"        player.y += (pdy / pdist) * pstep;",
+				"        player.going_x = player.x; player.going_y = player.y; player.moving = false;",
+				"      }",
+				"    }",
+				"  }",
+			);
+		}
 	}
 	if (config && config.auto_sell) {
 		lines.push(
@@ -252,6 +304,19 @@ function build_ai_code(config, partner_display_name) {
 		"  });",
 		"  nearby.sort(function(a, b){ return simple_distance(player, a) - simple_distance(player, b); });",
 		"  if (player.hp > player.max_hp * 0.4) {",
+	);
+	if (config && config.mode === "companion") {
+		// "partner" (declared above, in scope by var hoisting even if this
+		// exact tick's party-sync branch didn't run) is the leader here -
+		// copy their live target if it's a real, alive monster in this same
+		// instance, before falling back to picking one nearby ourselves.
+		lines.push(
+			"    if (typeof partner !== 'undefined' && partner && partner.target && pool[partner.target] && !pool[partner.target].dead) {",
+			"      player.target = partner.target;",
+			"    }",
+		);
+	}
+	lines.push(
 		"    if (!player.target || !pool[player.target]) { if (nearby[0]) player.target = nearby[0].id; }",
 		"    if (player.target && pool[player.target]) {",
 		"      try { player.socket.fs.skill({ name: 'attack', id: player.target }); } catch (e) {}",
@@ -316,6 +381,10 @@ function start_ticking(get_display_name) {
 						if (target_display_name) target_names.push(target_display_name);
 					}
 					await local_eval(display_name, build_merchant_code(target_names));
+					continue;
+				}
+				if (config.mode === "custom") {
+					await local_eval(display_name, build_custom_code(config));
 					continue;
 				}
 				var partner_display_name = config.party_with ? await get_display_name(config.party_with) : null;
