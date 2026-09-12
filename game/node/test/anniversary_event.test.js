@@ -182,13 +182,19 @@ function eventHarness(extra = {}) {
 	};
 }
 
-test("account flavor is deterministic, bounded and independent of character or realm", () => {
-	assert.equal(rules.sliceForAccount("account"), rules.sliceForAccount("account"));
-	assert.equal(rules.sliceForAccount(""), null);
-	assert.equal(rules.sliceForAccount({ id: "account" }), null);
+// [private fork] Was "account flavor is deterministic..." - flavor was
+// changed from a fixed per-account hash to a random pick per reward (see
+// anniversary_event.js), since the deterministic version permanently
+// locked the flavor-collection recipe out of reach on a single-account
+// server. randomSlice replaces the removed sliceForAccount.
+test("flavor is picked from the roll, covering the full bounded range", () => {
+	for (let i = 0; i < rules.SLICES.length; i++) {
+		const roll = i / rules.SLICES.length;
+		assert.equal(rules.randomSlice(() => roll), rules.SLICES[i]);
+	}
 	const counts = new Map(rules.SLICES.map((id) => [id, 0]));
 	for (let i = 0; i < 6000; i++) {
-		const id = rules.sliceForAccount(`account-${i}`);
+		const id = rules.randomSlice(Math.random);
 		assert(counts.has(id));
 		counts.set(id, counts.get(id) + 1);
 	}
@@ -216,7 +222,7 @@ test("kill rolls use contribution once and ignore loot multipliers", () => {
 	const monster = { xp: 10, max_hp: 100, luck: 100000, mult: 100000 };
 	assert.deepEqual(
 		rules.monsterRewards("account", monster, 1, () => 0),
-		[rules.sliceForAccount("account"), "anniversarygift"],
+		[rules.SLICES[0], "anniversarygift"],
 	);
 	assert.deepEqual(
 		rules.monsterRewards("account", monster, 0.5, () => 0.00011),
@@ -404,19 +410,18 @@ test("newer lower-level hosts receive four lottery tickets, not exclusive select
 	h.roster.push(player("Newcomer"));
 	assert.equal(h.start().target, "Newcomer");
 });
-test("first kiss guarantees own flavor and Gift; repeats, reconnects and retargeting cannot duplicate", () => {
+test("first kiss guarantees a flavor and Gift; repeats, reconnects and retargeting cannot duplicate", () => {
 	const h = eventHarness();
 	const second = player("Second", { owner: h.visitor.owner });
 	h.roster.push(second);
 	h.start();
 	assert(h.event.claim(h.visitor, h.host, h.deliver));
 	assert.deepEqual(h.delivered, [
-		["Visitor", [rules.sliceForAccount(h.visitor.owner), "anniversarygift"]],
+		["Visitor", [rules.SLICES[0], "anniversarygift"]],
 		["Host", ["anniversarygift"]],
 	]);
 	assert(!h.event.claim({ ...h.visitor }, h.host, h.deliver));
 	assert(h.event.claim(second, h.host, h.deliver));
-	assert.equal(h.delivered[2][1][0], h.delivered[0][1][0]);
 	assert.equal(h.delivered.length, 3, "host receives only one Gift");
 	h.host.afk = true;
 	h.visitor.afk = second.afk = true;

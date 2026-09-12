@@ -1,7 +1,5 @@
 "use strict";
 
-const { createHash } = require("node:crypto");
-
 const SLICES = Object.freeze([
 	"slice_strawberry",
 	"slice_citrus",
@@ -14,18 +12,19 @@ const INTERVAL = 30 * 60 * 1000;
 const WINDOW = 5 * 60 * 1000;
 const PUBLIC_MAPS = new Set(["main", "winterland", "desertland", "halloween"]);
 
-// Account ID alone determines the flavor. Never use a character ID, realm,
-// current date, mutable account fields, or a client-supplied flavor here.
-function sliceForAccount(accountId) {
-	if (typeof accountId !== "string" || !accountId) return null;
-	const hash = createHash("sha256").update(accountId).digest().readUInt32BE(0);
-	return SLICES[hash % SLICES.length];
+// [private fork] Originally account-ID-deterministic (see git history) to
+// stop one person from farming all 6 flavors via multiple accounts in a
+// real multiplayer economy. On a single-account private server that
+// anti-farming measure just permanently locks the flavor-collection recipe
+// out of reach instead - every reward would forever be the exact same
+// flavor. Random per reward instead, at the user's explicit request.
+function randomSlice(random) {
+	return SLICES[Math.floor(random() * SLICES.length)];
 }
 
 function monsterRewards(accountId, monster, share = 1, random = Math.random) {
-	const slice = sliceForAccount(accountId);
 	if (
-		!slice ||
+		!accountId ||
 		!monster ||
 		monster.pet ||
 		monster.trap ||
@@ -41,7 +40,7 @@ function monsterRewards(accountId, monster, share = 1, random = Math.random) {
 		return [];
 	const credit = Math.min(1, share),
 		result = [];
-	if (random() < credit / 5000) result.push(slice);
+	if (random() < credit / 5000) result.push(randomSlice(random));
 	if (random() < credit / 1500) result.push("anniversarygift");
 	return result;
 }
@@ -202,8 +201,8 @@ function createEvent({
 			distance(visitor, target) > 80
 		)
 			return false;
-		const slice = sliceForAccount(visitor.owner);
-		if (!slice || round.claims.has(visitor.id)) return false;
+		if (!visitor.owner || round.claims.has(visitor.id)) return false;
+		const slice = randomSlice(random);
 		// Synchronous delivery, reserved before any inventory side effects.
 		round.claims.add(visitor.id);
 		clearTicket(visitor);
@@ -256,4 +255,4 @@ function planCraft(player, recipe) {
 	return { cost: recipe.cost, take: [...take] };
 }
 
-module.exports = { SLICES, INTERVAL, WINDOW, sliceForAccount, monsterRewards, createEvent, planCraft };
+module.exports = { SLICES, INTERVAL, WINDOW, randomSlice, monsterRewards, createEvent, planCraft };
