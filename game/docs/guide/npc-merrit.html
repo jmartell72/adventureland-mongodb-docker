@@ -1,0 +1,58 @@
+<div class="merrit-guide" style="width:640px;text-align:left">
+	<p style="font-size:32px;text-decoration:underline dotted #C7C7B3">Merrit</p>
+	<div class="merrit-icon-text"><div class="merrit-portrait"></div><div>Keep a shop on Mainland's square. Merrit brings Market Parcels to traders who leave room for their neighbors.</div></div>
+
+	<div class="guide-card-grid">
+		<div class="guide-card"><b>Set up shop</b>Any class can take part. Open a stand with an item for sale or a buy order funded for at least one unit. Giveaways alone don't count.</div>
+		<div class="guide-card"><b>Stay two minutes</b>Keep your stock and your spot for two continuous minutes. Your account can receive one parcel per hour, across all characters and servers.</div>
+	</div>
+	<p>She must walk within <b>32px with a clear path</b> to deliver. Following her and opening a stand won't skip the two-minute wait.</p>
+
+	<p style="font-size:32px;text-decoration:underline dotted #C7C7B3">Market Parcels</p>
+	<div class="merrit-icon-text"><div class="merrit-parcel-icon"></div><div>Each visit gives <b>1 Market Parcel</b>. Trade it, bank it, or exchange one with Xyn for supplies or a rare find. Computer exchange access also works.</div></div>
+	<p><b>1 in 900 parcels</b> holds one of five rare T3 items. Each is <b>1 in 4,500</b>. Click an item to inspect it.</p>
+	<div class="merrit-all-rewards" style="font-size:24px"></div>
+	<p>Exchange 1 parcel for 1 result. Luck, stand type and sales volume do not change these chances.</p>
+
+	<p style="font-size:32px;text-decoration:underline dotted #C7C7B3">Leave room</p>
+	<p><b>No parcels within 40px of a stationary NPC.</b> Keep the entrances to Ponty, Favoré and other fixed NPCs clear. Roaming citizens don't count when they pause.</p>
+	<p><b>No parcels within 10px of another open stand.</b> At 10px or closer, both shops are blocked.</p>
+	<p><b>No parcels directly in front of another stand:</b> up to 15px south and within 10px sideways. Only the front shop is blocked by this rule.</p>
+	<p>Distances use character foot positions. Trading still works in these spaces.</p>
+
+	<details class="merrit-shop-status"><summary>Your shop</summary><div class="merrit-status"></div></details>
+	<details><summary>Where she walks</summary>
+		<p>Merrit stays within <b>600px of (0,0)</b>. Your stand must be in the outlined square or southern aisle, on pavement she can reach.</p>
+		<div style="overflow-x:auto"><div style="position:relative;width:640px;height:640px"><img src="/images/guide/merrit-mainland.png?v=1" width="640" height="640" alt="Mainland square and its southern aisle" style="image-rendering:pixelated"><svg width="640" height="640" style="position:absolute;left:0;top:0" aria-label="Reward area"><path d="M80 120H560V384H408V600H232V384H80Z" fill="none" stroke="#73FFAC" stroke-width="2"/><circle cx="320" cy="240" r="4" fill="white"/></svg></div></div>
+		<p>White dot: (0,0). Square: x −240 to 240, y −120 to 144. Southern aisle: x −88 to 88, y 144 to 360. Water, blocked ground and the spacing exclusions do not qualify.</p>
+	</details>
+	<details><summary>Timing, stock and bag space</summary>
+		<p>Moving, closing or reopening, disconnecting, leaving the area, losing your last qualifying listing, or failing the spacing rules restarts the two-minute settling time. Replacing listings while another valid listing remains keeps your progress.</p>
+		<p>After each delivery, settle for two minutes again. The one-hour account cooldown runs at the same time. Time away never builds up parcels. Ready shops get priority, but delivery still waits for Merrit's visit.</p>
+		<p>Parcels stack up to <b>9,999</b>. Keep an unlocked matching stack with room, or one free slot. A full bag doesn't consume a reward or restart the account cooldown. Exchanges need space for their result.</p>
+	</details>
+	<details><summary>An occasional extra: 1 SHELL</summary>
+		<p>Sometimes Merrit adds <b>1 SHELL</b> directly to your account. Below 10 SHELLS, the chance is higher and falls as your balance approaches 10.</p>
+		<table><thead><tr><th>SHELLS before the visit</th><th>Chance of +1 SHELL</th></tr></thead><tbody class="merrit-shell-odds"></tbody></table>
+		<p>The chance is <b>0.5%</b> at zero SHELLS and <b>0.001%</b> at 10 or more. Spending SHELLS can raise it again. Buying, trading or exchanging parcels gives no extra visit-bonus roll.</p>
+	</details>
+	<p>A sparkle and a coin sound mark each delivery. Click Merrit to talk or recall her last gift.</p>
+</div>
+<style>
+	.merrit-guide .merrit-icon-text{display:flex;align-items:flex-start;gap:12px;margin:1em 0}
+	.merrit-guide .merrit-icon-text>div:first-child{flex:0 0 auto;line-height:0}
+	.merrit-guide .merrit-icon-text>div:last-child{flex:1;min-width:0}
+	.merrit-guide summary{list-style:none;cursor:pointer}
+	.merrit-guide summary::-webkit-details-marker{display:none}
+	.merrit-guide summary::before{content:">";display:inline-block;width:24px}
+	.merrit-guide details[open]>summary::before{content:"-"}
+</style>
+<script>
+	var merrit = G.npcs.citizen22;
+	$(".merrit-portrait").html(sprite(merrit.skin,{cx:clone(merrit.cx)}));
+	$(".merrit-parcel-icon").html(merrit_item_preview("marketparcel",1));
+	$(".merrit-all-rewards").html(render_drop([1,"open","marketparcel"],1,"#858B8E"));
+	$(".merrit-shell-odds").html(merrit_shell_odds_html());
+	if(character){$(".merrit-status").html(merrit_status_html(character.merrit));request_merrit_status();}
+	else $(".merrit-shop-status").hide();
+</script>

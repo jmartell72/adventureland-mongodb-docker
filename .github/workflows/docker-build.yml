@@ -5,9 +5,9 @@ on:
     branches: [main]
     paths:
       - Dockerfile
+      - game/**
       - scripts/**
       - docker-compose.yml
-      - upstream-refs.json
       - .github/workflows/docker-build.yml
   workflow_dispatch: {}
 
@@ -25,13 +25,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Read upstream refs
-        id: refs
-        run: |
-          echo "adventureland=$(jq -r .adventureland_mongodb upstream-refs.json)" >> "$GITHUB_OUTPUT"
-          echo "common=$(jq -r .common_engine upstream-refs.json)" >> "$GITHUB_OUTPUT"
-          echo "secretsandconfig=$(jq -r .adventureland_secretsandconfig upstream-refs.json)" >> "$GITHUB_OUTPUT"
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -47,12 +40,8 @@ jobs:
         with:
           context: .
           push: true
-          build-args: |
-            ADVENTURELAND_REF=${{ steps.refs.outputs.adventureland }}
-            COMMON_ENGINE_REF=${{ steps.refs.outputs.common }}
-            SECRETSANDCONFIG_REF=${{ steps.refs.outputs.secretsandconfig }}
           tags: |
             ghcr.io/${{ github.repository }}:latest
-            ghcr.io/${{ github.repository }}:${{ steps.refs.outputs.adventureland }}
+            ghcr.io/${{ github.repository }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

@@ -1,0 +1,96 @@
+<p class="tutlead">Town merchants sell dependable supplies. Monsters provide the stranger merchandise.</p>
+
+<div class="tutlinks">
+	<div
+		class="gamebutton gamebutton-small"
+		onclick="
+			btc(event);
+			open_guide('shops-and-selling', get_guide_url('shops-and-selling'));
+		"
+	>
+		BUYING &amp; SELLING
+	</div>
+</div>
+
+{% for task in tutorial_data("shops").tasks %} {% if loop.first %}
+<div class="tutdivider"></div>
+{% endif %}
+<div class="tuttaskrow"><span class="tuttask tuttask{{task}}">o</span> <span class="tuttaskname">{{task_name(task)}}</span> <span class="tuttaskd tuttaskd{{task}}">DONE</span></div>
+{% endfor %}
+
+<div class="tutpath manual">
+	<div class="tutpath-title">MANUAL</div>
+	<p>Walk near a merchant and right-click. Buy a small stack of potions. To sell, open your inventory while a merchant is active and choose an item you truly do not need.</p>
+	<p>Keep one empty inventory slot. Full bags have a talent for becoming full at the worst moment.</p>
+</div>
+
+<div class="tutpath codepath">
+	<div class="tutpath-title">OPTIONAL CODE</div>
+	<!-- prettier-ignore -->
+	<div class="code">async function stock_up() {
+	await smart_move(find_npc("fancypots"));
+	await buy("hpot0", 20);
+}
+
+stock_up().catch(function (error) {
+	show_json(error);
+});</div>
+	<p>Selling uses an inventory slot number. Check the item first; CODE is fast, regret is faster.</p>
+	<p>
+		<span class="rlabel" onclick="render_function_reference($(this).html())">find_npc</span> · <span class="rlabel" onclick="render_function_reference($(this).html())">buy</span> ·
+		<span class="rlabel" onclick="render_function_reference($(this).html())">sell</span>
+	</p>
+</div>
+
+<style>
+	.tutlead {
+		color: #2b9ec9;
+		font-size: 34px;
+	}
+	.tutdivider {
+		border-top: 5px solid gray;
+		margin: 14px -24px 8px;
+	}
+	.tuttaskrow {
+		line-height: 44px;
+	}
+	.tuttask {
+		color: #4a4a4a;
+		font-size: 64px;
+		vertical-align: middle;
+	}
+	.tuttaskname {
+		color: #dc4c6e;
+		vertical-align: middle;
+	}
+	.tuttaskd {
+		color: #85c76b;
+		display: none;
+		vertical-align: middle;
+	}
+	.tutpath {
+		border: 4px solid #777;
+		margin: 12px 0;
+		padding: 10px 14px;
+		text-align: left;
+	}
+	.tutpath.manual {
+		border-color: #5e9f6e;
+	}
+	.tutpath.codepath {
+		border-color: #c58b3d;
+	}
+	.tutpath-title {
+		color: #555;
+		font-size: 24px;
+	}
+	.manual .tutpath-title {
+		color: #387649;
+	}
+	.codepath .tutpath-title {
+		color: #9a6328;
+	}
+	.tutlinks {
+		text-align: center;
+	}
+</style>

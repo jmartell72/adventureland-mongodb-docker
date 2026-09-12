@@ -1,0 +1,615 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="robots" content="noindex, nofollow" />
+		<title>{{ domain.title }}</title>
+		<link rel="icon" href="/images/favicon.png" />
+		<link href="/css/common.css?v={{ domain.v }}" rel="stylesheet" type="text/css" />
+		<style>
+			:root {
+				color-scheme: dark;
+				--bg: #080a0c;
+				--panel: #11171b;
+				--panel2: #182127;
+				--border: #50606a;
+				--text: #edf2f2;
+				--muted: #9aa8ad;
+				--green: #67c85c;
+				--blue: #55bdf0;
+				--gold: #f0c84b;
+				--red: #e65b67;
+			}
+			* {
+				box-sizing: border-box;
+			}
+			html,
+			body {
+				margin: 0;
+				min-height: 100%;
+				background: var(--bg);
+				color: var(--text);
+				font-family: pixel, monospace;
+				font-size: 18px;
+				line-height: 1.35;
+			}
+			body {
+				padding: 24px;
+			}
+			.shell {
+				width: min(1500px, 100%);
+				margin: 0 auto;
+			}
+			.topbar,
+			.runner,
+			.bot-head,
+			.actions {
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				gap: 16px;
+			}
+			h1,
+			h2,
+			h3,
+			p {
+				margin: 0;
+			}
+			h1 {
+				font-size: 38px;
+			}
+			h2 {
+				font-size: 25px;
+			}
+			h3 {
+				font-size: 21px;
+			}
+			.subtitle,
+			.muted {
+				color: var(--muted);
+			}
+			.nav {
+				display: flex;
+				flex-wrap: wrap;
+				gap: 8px;
+			}
+			a,
+			button {
+				color: var(--text);
+				font: inherit;
+			}
+			.nav a,
+			button {
+				border: 1px solid var(--border);
+				background: var(--panel2);
+				padding: 9px 13px;
+				text-decoration: none;
+				cursor: pointer;
+			}
+			button:hover,
+			.nav a:hover {
+				border-color: var(--blue);
+			}
+			button:disabled {
+				cursor: wait;
+				opacity: 0.5;
+			}
+			button.stop {
+				border-color: #8c4248;
+			}
+			.runner {
+				margin: 24px 0 16px;
+				padding: 16px;
+				border: 1px solid var(--border);
+				background: var(--panel);
+			}
+			.runner.online {
+				border-color: var(--green);
+			}
+			.runner.offline {
+				border-color: var(--red);
+			}
+			.runner.degraded {
+				border-color: var(--gold);
+			}
+			.dot {
+				width: 12px;
+				height: 12px;
+				display: inline-block;
+				border-radius: 50%;
+				margin-right: 8px;
+				background: var(--muted);
+			}
+			.online .dot,
+			.phase-running .dot {
+				background: var(--green);
+				box-shadow: 0 0 10px rgba(103, 200, 92, 0.55);
+			}
+			.degraded .dot {
+				background: var(--gold);
+			}
+			.offline .dot,
+			.phase-failed .dot {
+				background: var(--red);
+			}
+			.grid {
+				display: grid;
+				grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+				gap: 16px;
+			}
+			.section-head {
+				display: flex;
+				align-items: baseline;
+				justify-content: space-between;
+				gap: 16px;
+				margin: 24px 0 10px;
+			}
+			.inactive {
+				margin-top: 20px;
+				border: 1px solid var(--border);
+				background: var(--panel);
+			}
+			.inactive > summary {
+				padding: 13px 16px;
+				color: var(--muted);
+				cursor: pointer;
+			}
+			.inactive > .grid {
+				padding: 0 16px 16px;
+			}
+			.bot {
+				border: 1px solid var(--border);
+				background: var(--panel);
+				padding: 18px;
+				min-width: 0;
+			}
+			.bot.pending {
+				border-color: var(--gold);
+			}
+			.bot.stuck {
+				border-color: var(--red);
+				box-shadow: inset 0 0 0 1px rgba(230, 91, 103, 0.25);
+			}
+			.phase {
+				color: var(--muted);
+				white-space: nowrap;
+			}
+			.phase-running .phase {
+				color: var(--green);
+			}
+			.phase-starting .phase,
+			.phase-bootstrapped .phase,
+			.phase-loading_code .phase,
+			.pending .phase {
+				color: var(--gold);
+			}
+			.metrics {
+				display: grid;
+				grid-template-columns: repeat(2, minmax(0, 1fr));
+				gap: 1px;
+				margin: 16px 0;
+				background: var(--border);
+				border: 1px solid var(--border);
+			}
+			.fleet {
+				display: grid;
+				grid-template-columns: repeat(auto-fit, minmax(165px, 1fr));
+				gap: 1px;
+				margin-bottom: 16px;
+				background: var(--border);
+				border: 1px solid var(--border);
+			}
+			.fleet .metric.warning strong {
+				color: var(--red);
+			}
+			.metric {
+				background: var(--panel2);
+				padding: 10px;
+				min-width: 0;
+			}
+			.metric span {
+				display: block;
+				color: var(--muted);
+				font-size: 15px;
+				margin-bottom: 3px;
+			}
+			.metric strong {
+				display: block;
+				overflow: hidden;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+			}
+			.logs {
+				margin-top: 14px;
+				padding: 10px;
+				min-height: 80px;
+				max-height: 180px;
+				overflow: auto;
+				background: #060809;
+				border: 1px solid #303a40;
+				color: #c9d3d6;
+				font: 14px/1.45 monospace;
+				white-space: pre-wrap;
+				overflow-wrap: anywhere;
+			}
+			.log-tabs {
+				display: flex;
+				gap: 8px;
+				margin-top: 14px;
+			}
+			.log-tabs button {
+				padding: 7px 10px;
+				font-size: 15px;
+			}
+			.log-tabs button.active {
+				border-color: var(--blue);
+				color: var(--blue);
+			}
+			.mainframe-log-line + .mainframe-log-line {
+				margin-top: 6px;
+			}
+			.mainframe-log-line.event-warn {
+				color: var(--gold);
+			}
+			.mainframe-log-line.event-error {
+				color: #ff929c;
+			}
+			.empty {
+				grid-column: 1/-1;
+				padding: 40px;
+				text-align: center;
+				border: 1px dashed var(--border);
+				color: var(--muted);
+			}
+			#error {
+				display: none;
+				margin-bottom: 16px;
+				padding: 12px;
+				border: 1px solid var(--red);
+				color: #ffb8be;
+			}
+			@media (max-width: 700px) {
+				body {
+					padding: 12px;
+				}
+				.topbar,
+				.runner,
+				.bot-head {
+					align-items: flex-start;
+					flex-direction: column;
+				}
+				h1 {
+					font-size: 30px;
+				}
+				.grid {
+					grid-template-columns: 1fr;
+				}
+			}
+		</style>
+	</head>
+	<body>
+		<main class="shell">
+			<header class="topbar">
+				<div>
+					<h1>Mainframe</h1>
+					<div class="subtitle">Contained character CODE.</div>
+				</div>
+				<nav class="nav" aria-label="Admin navigation"><a href="/admin">Admin</a><a href="/">Game</a></nav>
+			</header>
+			<section id="runner" class="runner offline">
+				<div><span class="dot"></span><strong id="runner-state">Connecting</strong></div>
+				<div id="runner-detail" class="muted">Waiting for the controller.</div>
+			</section>
+			<section id="fleet" class="fleet" aria-label="Mainframe summary"></section>
+			<div id="error"></div>
+			<div class="section-head"><h2>Active sessions</h2><span id="active-detail" class="muted">Loading…</span></div>
+			<section id="bots" class="grid" aria-live="polite"><div class="empty">Loading Mainframe…</div></section>
+			<details id="inactive" class="inactive">
+				<summary id="inactive-title">Stopped configurations</summary>
+				<section id="inactive-bots" class="grid"></section>
+			</details>
+		</main>
+		<script>
+			(function () {
+				var busy = Object.create(null);
+				var selectedLogTab = Object.create(null);
+				var botsNode = document.getElementById("bots");
+				var inactiveNode = document.getElementById("inactive");
+				var inactiveBotsNode = document.getElementById("inactive-bots");
+				var runnerNode = document.getElementById("runner");
+				var errorNode = document.getElementById("error");
+				var fleetCapacity = 0;
+				function text(value) {
+					return value === undefined || value === null || value === "" ? "—" : String(value);
+				}
+				function duration(ms) {
+					if (!Number.isFinite(ms)) return "—";
+					var seconds = Math.floor(ms / 1000);
+					if (seconds < 60) return seconds + "s";
+					var minutes = Math.floor(seconds / 60);
+					if (minutes < 60) return minutes + "m " + (seconds % 60) + "s";
+					return Math.floor(minutes / 60) + "h " + (minutes % 60) + "m";
+				}
+				function bytes(value) {
+					if (!Number.isFinite(value)) return "—";
+					return (value / 1024 / 1024).toFixed(1) + " MB";
+				}
+				function number(value, digits) {
+					return Number.isFinite(value) ? value.toFixed(digits || 0) : "—";
+				}
+				function metric(label, value) {
+					var node = document.createElement("div");
+					node.className = "metric";
+					var small = document.createElement("span");
+					small.textContent = label;
+					var strong = document.createElement("strong");
+					strong.textContent = value;
+					node.append(small, strong);
+					return node;
+				}
+				function isActive(bot) {
+					return (
+						bot.desired_state === "running" ||
+						bot.pending_state === "running" ||
+						["loading_code", "starting", "bootstrapped", "running", "stopping"].includes(bot.phase)
+					);
+				}
+				function renderBot(bot) {
+					var card = document.createElement("article");
+					var phase = bot.phase || "stopped";
+					var observation = bot.observation || {};
+					var movement = observation.movement || {};
+					var performance = bot.performance || {};
+					var session = performance.session || performance.rolling_24h || {};
+					var rolling = performance.rolling_24h || {};
+					var containment = bot.containment || {};
+					var limits = containment.limits || {};
+					var access = bot.mainframe_access || {};
+					card.className = "bot phase-" + phase + (bot.pending_state ? " pending" : "") + (movement.stuck ? " stuck" : "");
+					var head = document.createElement("div");
+					head.className = "bot-head";
+					var title = document.createElement("div");
+					var name = document.createElement("h2");
+					name.textContent = bot.bot_id;
+					var sub = document.createElement("div");
+					sub.className = "muted";
+					sub.textContent = text(bot.server) + " / CODE " + text(bot.code_slot) + " / generation " + text(bot.generation);
+					title.append(name, sub);
+					var phaseNode = document.createElement("div");
+					phaseNode.className = "phase";
+					var phaseDot = document.createElement("span");
+					phaseDot.className = "dot";
+					phaseNode.append(phaseDot);
+					phaseNode.append(document.createTextNode(bot.pending_state ? "queued " + bot.pending_state : phase));
+					head.append(title, phaseNode);
+					var metrics = document.createElement("div");
+					metrics.className = "metrics";
+					metrics.append(
+						metric("Game", bot.game_connected ? "Connected" : "Disconnected"),
+						metric("Mainframe", text(bot.controller_id).toUpperCase()),
+						metric("Observed state", text(observation.activity)),
+						metric("Observed position", observation.map ? observation.map + " " + number(observation.x, 0) + ", " + number(observation.y, 0) : "—"),
+						metric("Observed age", duration(observation.age_ms)),
+						metric("Stationary", duration(movement.stationary_ms)),
+						metric("Move requests since progress", text(movement.move_requests_since_position_change)),
+						metric("Observed distance", number(movement.distance_observed, 0)),
+						metric("Observed map changes", text(movement.map_changes_observed)),
+						metric("Guest RSS", bytes(bot.metrics && bot.metrics.rss)),
+						metric("Guest CPU", number((bot.metrics && bot.metrics.cpu_ratio) * 100, 1) + "%"),
+						metric(
+							"Call cost",
+							Number.isFinite(bot.metrics && bot.metrics.call_cost_percent)
+								? number(bot.metrics.call_cost_percent, 1) + "% of worker CPU"
+								: "—",
+						),
+						metric("Last disconnect", text(bot.failure && bot.failure.reason)),
+						metric("Host VM memory", bytes(containment.memory_current_bytes) + " / " + bytes(limits.memory_max_bytes)),
+						metric("Host CPU cap", number(Number(limits.cpu_quota_ratio) * 100, 0) + "%"),
+						metric("Host CPU throttled", duration(Number(containment.cpu_throttled_usec) / 1000)),
+						metric("Disk read / write", bytes(containment.io_read_bytes) + " / " + bytes(containment.io_write_bytes)),
+						metric("Disk caps", bytes(limits.io_read_bytes_per_second) + "/s / " + bytes(limits.io_write_bytes_per_second) + "/s"),
+						metric("VMM identity", containment.identity_slot === null || containment.identity_slot === undefined ? "—" : "isolated #" + containment.identity_slot),
+						metric("KVM timer", containment.kvm_pit_cgrouped ? "Contained" : "—"),
+						metric("Guest syscall filter", bot.metrics && bot.metrics.seccomp_mode === 2 ? "Active" : "—"),
+						metric("Node permissions", bot.metrics && bot.metrics.permission_model === true ? "Active" : "—"),
+						metric("Heartbeat", duration(bot.last_heartbeat_ms)),
+						metric("Uptime", duration(bot.uptime_ms)),
+						metric("Requests sent", text(bot.traffic && bot.traffic.actions_total)),
+						metric("Path avg", number(bot.pathfinding && bot.pathfinding.average_compute_ms, 3) + " ms"),
+						metric("DPS", number(session.dps, 2)),
+						metric("Gold/sec", number(session.gps, 2)),
+						metric("XP/sec", number(session.xps, 2)),
+						metric("Deaths / 24h", text(rolling.deaths)),
+						metric("Auth debuff", session.auth_debuff === false ? "No" : session.auth_debuff === true ? "Yes" : "—"),
+						metric("Mainframe access", access.active ? "Active" : "Expired"),
+						metric("Access remaining", duration(Number(access.remaining_seconds) * 1000)),
+					);
+					var actions = document.createElement("div");
+					actions.className = "actions";
+					var start = document.createElement("button");
+					start.textContent = "Run on Mainframe";
+					start.disabled = !!busy[bot.bot_id] || bot.desired_state === "running" || bot.pending_state === "running";
+					start.onclick = function () {
+						setState(bot.bot_id, "running");
+					};
+					var stop = document.createElement("button");
+					stop.className = "stop";
+					stop.textContent = "Disconnect";
+					stop.disabled = !!busy[bot.bot_id] || bot.desired_state === "stopped" || bot.pending_state === "stopped";
+					stop.onclick = function () {
+						setState(bot.bot_id, "stopped");
+					};
+					actions.append(start, stop);
+					var logTabs = document.createElement("div");
+					logTabs.className = "log-tabs";
+					var mainframeTab = document.createElement("button");
+					mainframeTab.type = "button";
+					mainframeTab.textContent = "Mainframe log";
+					var codeTab = document.createElement("button");
+					codeTab.type = "button";
+					codeTab.textContent = "CODE log";
+					logTabs.append(mainframeTab, codeTab);
+					var logs = document.createElement("div");
+					logs.className = "logs";
+					function renderLogs(selected) {
+						selectedLogTab[bot.bot_id] = selected;
+						mainframeTab.classList.toggle("active", selected === "mainframe");
+						codeTab.classList.toggle("active", selected === "code");
+						logs.replaceChildren();
+						if (selected === "code") {
+							var lines = (bot.logs || []).map(function (entry) {
+								return [entry.at, entry.level, (entry.values || []).map(text).join(" ")].filter(Boolean).join("  ");
+							});
+							logs.textContent = lines.length ? lines.join("\n") : "No CODE logs.";
+							return;
+						}
+						var events = bot.events || [];
+						if (!events.length) {
+							logs.textContent = "No Mainframe logs.";
+							return;
+						}
+						events.forEach(function (event) {
+							var row = document.createElement("div");
+							row.className = "mainframe-log-line event-" + (["warn", "error"].includes(event.level) ? event.level : "info");
+							row.textContent = [event.at, String(event.level || "info").toUpperCase(), event.message, event.detail].filter(Boolean).join("  ");
+							logs.append(row);
+						});
+					}
+					mainframeTab.onclick = function () {
+						renderLogs("mainframe");
+					};
+					codeTab.onclick = function () {
+						renderLogs("code");
+					};
+					renderLogs(selectedLogTab[bot.bot_id] || "mainframe");
+					card.append(head, metrics, actions, logTabs, logs);
+					return card;
+				}
+				function renderFleet(state, active, inactive) {
+					fleetCapacity = Number(state.capacity) || 0;
+					var bots = state.bots || [];
+					var totals = active.reduce(function (result, bot) {
+						var containment = bot.containment || {};
+						result.memory += Number(containment.memory_current_bytes) || 0;
+						result.memory_peak += Number(containment.memory_peak_bytes) || 0;
+						result.memory_limit += Number(containment.limits && containment.limits.memory_max_bytes) || 0;
+						result.cpu += Number(bot.metrics && bot.metrics.cpu_ratio) || 0;
+						result.throttled += Number(containment.cpu_throttled_usec) || 0;
+						result.read += Number(containment.io_read_bytes) || 0;
+						result.write += Number(containment.io_write_bytes) || 0;
+						result.oom += Number(containment.memory_events_oom_kill) || 0;
+						result.failures += Number(containment.status_failures) || 0;
+						if (bot.failure) result.failed += 1;
+						if (bot.observation && bot.observation.movement && bot.observation.movement.stuck) result.stuck += 1;
+						if (containment.identity_slot !== null && containment.identity_slot !== undefined) result.identities.add(containment.identity_slot);
+						if (bot.metrics && bot.metrics.seccomp_mode === 2 && bot.metrics.no_new_privileges === 1 && bot.metrics.permission_model === true) result.hardened += 1;
+						if (bot.game_connected) result.connected += 1;
+						if (bot.phase !== "running" || bot.pending_state) result.transitioning += 1;
+						return result;
+					}, { memory: 0, memory_peak: 0, memory_limit: 0, cpu: 0, throttled: 0, read: 0, write: 0, oom: 0, failures: 0, failed: 0, stuck: 0, hardened: 0, connected: 0, transitioning: 0, identities: new Set() });
+					bots.forEach(function (bot) {
+						if (bot.failure && !isActive(bot)) totals.failed += 1;
+					});
+					var fleet = document.getElementById("fleet");
+					var alertMetric = metric("Alerts", totals.oom + " OOM / " + totals.failures + " probes / " + totals.failed + " failed / " + totals.stuck + " stuck");
+					var summary = [
+						metric("Active sessions", active.length + " / " + fleetCapacity),
+						metric("Available slots", Math.max(0, fleetCapacity - active.length)),
+						metric("Game connected", totals.connected + " / " + active.length),
+						metric("Transitioning", totals.transitioning),
+						metric("Active VM memory", bytes(totals.memory) + " / " + bytes(totals.memory_limit)),
+						metric("Memory peak", bytes(totals.memory_peak)),
+						metric("Guest CPU", number(totals.cpu * 100, 1) + "%"),
+						metric("CPU throttled", duration(totals.throttled / 1000)),
+						metric("Disk read / write", bytes(totals.read) + " / " + bytes(totals.write)),
+						metric("Isolated identities", totals.identities.size + " / " + active.length),
+						metric("Guest hardening", totals.hardened + " / " + active.length),
+						metric("Stopped configs", inactive.length),
+						alertMetric,
+					];
+					(state.controllers || []).forEach(function (controller) {
+						summary.push(
+							metric(
+								controller.id.toUpperCase() + " Mainframe",
+								(controller.online ? "Online" : "Offline") + " / " + controller.active + " / " + controller.capacity,
+							),
+						);
+					});
+					fleet.replaceChildren.apply(fleet, summary);
+					if (totals.oom || totals.failures || totals.failed || totals.stuck) alertMetric.classList.add("warning");
+				}
+				function render(state) {
+					var health = state.all_online ? "online" : state.online ? "degraded" : "offline";
+					runnerNode.className = "runner " + health;
+					document.getElementById("runner-state").textContent = state.all_online
+						? "Both Mainframes online"
+						: state.online
+							? "Mainframe capacity reduced"
+							: "Mainframe offline";
+					document.getElementById("runner-detail").textContent = (state.controllers || [])
+						.map(function (controller) {
+							return controller.id.toUpperCase() + " " + (controller.online ? "online" : "offline") + " (" + controller.active + "/" + controller.capacity + ")";
+						})
+						.join(" / ") || "No Mainframe report yet.";
+					var active = (state.bots || []).filter(isActive);
+					var inactive = (state.bots || []).filter(function (bot) { return !isActive(bot); });
+					renderFleet(state, active, inactive);
+					document.getElementById("active-detail").textContent = active.length
+						? active.length + " character" + (active.length === 1 ? "" : "s") + " using isolated machines"
+						: "No machines in use";
+					botsNode.replaceChildren();
+					if (!active.length) {
+						var empty = document.createElement("div");
+						empty.className = "empty";
+						empty.textContent = state.configured ? "No active Mainframe sessions." : "Mainframe is not configured.";
+						botsNode.append(empty);
+					} else {
+						active.forEach(function (bot) {
+							botsNode.append(renderBot(bot));
+						});
+					}
+					inactiveBotsNode.replaceChildren();
+					document.getElementById("inactive-title").textContent = "Stopped configurations (" + inactive.length + ")";
+					inactiveNode.style.display = inactive.length ? "block" : "none";
+					inactive.forEach(function (bot) {
+						inactiveBotsNode.append(renderBot(bot));
+					});
+				}
+				async function refresh() {
+					try {
+						var response = await fetch("/admin/mainframe/state", { cache: "no-store" });
+						var state = await response.json();
+						if (!response.ok || state.failed) throw new Error(state.reason || "Status request failed");
+						errorNode.style.display = "none";
+						render(state);
+					} catch (error) {
+						errorNode.textContent = error.message;
+						errorNode.style.display = "block";
+					}
+				}
+				async function setState(character, desired_state) {
+					busy[character] = true;
+					await refresh();
+					try {
+						var response = await fetch("/admin/mainframe/state", {
+							method: "POST",
+							headers: { "content-type": "application/json" },
+							body: JSON.stringify({ character: character, desired_state: desired_state }),
+						});
+						var result = await response.json();
+						if (!response.ok || result.failed) throw new Error(result.reason || "Command failed");
+					} catch (error) {
+						errorNode.textContent = error.message;
+						errorNode.style.display = "block";
+					} finally {
+						delete busy[character];
+						await refresh();
+					}
+				}
+				refresh();
+				setInterval(refresh, 2000);
+			})();
+		</script>
+	</body>
+</html>

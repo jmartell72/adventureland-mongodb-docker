@@ -1,0 +1,171 @@
+<p><span class="dlabel">The character object</span></p>
+
+<p><span class="clabel">character</span> is the public CODE object for your live character. It mirrors <span class="clabel">parent.character</span> while normalizing coordinates to <span class="dlabel">x</span> and <span class="dlabel">y</span>. Read fields from <span class="clabel">character</span>; use public functions such as <span class="dlabel">move</span>, <span class="dlabel">equip</span>, and <span class="dlabel">use_skill</span> to change server state.</p>
+
+<div class="code">show_json(character);
+show_json(character.slots);
+show_json(character.items);
+show_json(character.s);</div>
+
+<p>Character updates are live but asynchronous. A Promise result and the next character update can arrive separately; function docs say when a call waits for both. Optional fields are absent when they do not apply.</p>
+
+<p><span class="dlabel">Identity and location</span></p>
+
+<div class="code">{
+	<span data-field="name">name</span>: "CharacterName",
+	<span data-field="id">id</span>: "CharacterName",
+	<span data-field="type">type</span>: "character",
+	<span data-field="ctype">ctype</span>: "warrior", // A key from G.classes
+	<span data-field="owner">owner</span>: "OwnerID", // Empty for private characters you do not own
+	<span data-field="level">level</span>: 72,
+	<span data-field="map">map</span>: "main",
+	<span data-field="in">in</span>: "main", // Unique instance ID inside instances
+	<span data-field="x">x</span>: 12.5,
+	<span data-field="y">y</span>: 40,
+	<span data-field="visible">visible</span>: true,
+	<span data-field="me">me</span>: 1,
+	<span data-field="skin">skin</span>: "mwarrior",
+	<span data-field="cx">cx</span>: ["santahat"],
+}</div>
+
+<p><span class="dlabel">character.x</span> and <span class="dlabel">character.y</span> proxy the underlying <span class="dlabel">real_x</span>/<span class="dlabel">real_y</span>. Nearby entities use ordinary <span class="dlabel">x</span>/<span class="dlabel">y</span> coordinates. <span class="dlabel">map</span> is the map key; <span class="dlabel">in</span> identifies the current instance.</p>
+
+<p><span class="dlabel">Vitals, offense, and defense</span></p>
+
+<div class="code">{
+	<span data-field="hp">hp</span>: 2000,
+	<span data-field="max_hp">max_hp</span>: 2500,
+	<span data-field="mp">mp</span>: 360,
+	<span data-field="max_mp">max_mp</span>: 960,
+	<span data-field="xp">xp</span>: 978000,
+	<span data-field="attack">attack</span>: 720,
+	<span data-field="frequency">frequency</span>: 1.2, // Attacks per second
+	<span data-field="speed">speed</span>: 95,
+	<span data-field="range">range</span>: 40,
+	<span data-field="armor">armor</span>: 420,
+	<span data-field="resistance">resistance</span>: 260,
+	<span data-field="apiercing">apiercing</span>: 0,
+	<span data-field="rpiercing">rpiercing</span>: 0,
+	<span data-field="evasion">evasion</span>: 2.5,
+	<span data-field="reflection">reflection</span>: 0,
+	<span data-field="crit">crit</span>: 0,
+	<span data-field="lifesteal">lifesteal</span>: 10,
+	<span data-field="manasteal">manasteal</span>: 0.25,
+	<span data-field="dreturn">dreturn</span>: 0,
+	<span data-field="mp_cost">mp_cost</span>: 24,
+}</div>
+
+<p>Percentage-like fields are expressed in percentage points unless a specific definition says otherwise. The server has the final value; local values can be one network update behind a just-completed action.</p>
+
+<p><span class="dlabel">Attributes and combat pressure</span></p>
+
+<div class="code">{
+	<span data-field="str">str</span>: 206,
+	<span data-field="int">int</span>: 46,
+	<span data-field="dex">dex</span>: 46,
+	<span data-field="vit">vit</span>: 57,
+	<span data-field="for">for</span>: 10,
+	<span data-field="courage">courage</span>: 2,
+	<span data-field="mcourage">mcourage</span>: 2,
+	<span data-field="pcourage">pcourage</span>: 2,
+	<span data-field="fear">fear</span>: 0,
+	<span data-field="targets">targets</span>: 2,
+}</div>
+
+<p><span class="dlabel">Inventory, equipment, and currency</span></p>
+
+<div class="code">{
+	<span data-field="gold">gold</span>: 1200000000,
+	<span data-field="cash">cash</span>: 200, // Shells
+	<span data-field="isize">isize</span>: 42,
+	<span data-field="esize">esize</span>: 40,
+	<span data-field="items">items</span>: [
+		{ name: "gloves", level: 0 },
+		null,
+		{ name: "hpot0", q: 999 },
+	],
+	<span data-field="slots">slots</span>: {
+		mainhand: { name: "blade", level: 9 },
+		offhand: null,
+		"helmet": null,
+		chest: { name: "coat", level: 8, stat_type: "str" },
+		pants: null,
+		shoes: null,
+		gloves: null,
+		cape: null,
+		belt: { name: "hpbelt", level: 4 },
+		ring1: null,
+		ring2: null,
+		earring1: null,
+		earring2: null,
+		amulet: null,
+		orb: null,
+		elixir: { name: "eggnog", expires: "2053-02-19T07:00:59.459Z" },
+	},
+}</div>
+
+<p>Inventory indexes run from <span class="dlabel">0</span> to <span class="dlabel">character.isize - 1</span>. Empty positions are <span class="dlabel">null</span>. Stack quantity is <span class="dlabel">q</span>; a missing <span class="dlabel">q</span> means one. Equipment slot availability can vary by class and item.</p>
+
+<p><span class="dlabel">Conditions and ongoing actions</span></p>
+
+<div class="code">{
+	<span data-field="s">s</span>: {
+		cursed: { ms: 400 },
+		mluck: { ms: 120000, f: "MerchantName" },
+	},
+	<span data-field="c">c</span>: {
+		town: { ms: 3000 },
+		revival: { ms: 8000, f: "PriestName" },
+	},
+	<span data-field="q">q</span>: {
+		upgrade: { ms: 2000, len: 2000, num: 5 },
+		compound: { ms: 8000, len: 10000, num: 0 },
+		exchange: { ms: 3000, name: "gem0", num: 12 },
+	},
+}</div>
+
+<p><span class="dlabel">s</span> contains active conditions, buffs, and debuffs. <span class="dlabel">c</span> contains cancellable channeling actions. <span class="dlabel">q</span> contains progressed item actions. Entries disappear when complete; test for their presence rather than retaining old references.</p>
+
+<p><span class="dlabel">Movement</span></p>
+
+<div class="code">{
+	<span data-field="moving">moving</span>: true,
+	<span data-field="vx">vx</span>: 95,
+	<span data-field="vy">vy</span>: 0,
+	<span data-field="from_x">from_x</span>: 12.5,
+	<span data-field="from_y">from_y</span>: 40,
+	<span data-field="going_x">going_x</span>: 525.5,
+	<span data-field="going_y">going_y</span>: 40,
+}</div>
+
+<p>Movement fields are meaningful while <span class="dlabel">moving</span> is true. Use <span class="dlabel">is_moving</span>, <span class="dlabel">can_move_to</span>, <span class="dlabel">move</span>, or <span class="dlabel">smart_move</span> rather than assigning them.</p>
+
+<p><span class="dlabel">Social and runtime state</span></p>
+
+<div class="code">{
+	<span data-field="party">party</span>: "LeaderName",
+	<span data-field="guild">guild</span>: "XYZ",
+	<span data-field="friends">friends</span>: ["OwnerID1", "OwnerID2"],
+	<span data-field="stand">stand</span>: false,
+	<span data-field="rip">rip</span>: false,
+	<span data-field="afk">afk</span>: false,
+	<span data-field="code">code</span>: true,
+	<span data-field="ping">ping</span>: 64.5,
+	<span data-field="cc">cc</span>: 12.5,
+	<span data-field="target">target</span>: "MonsterID",
+	<span data-field="focus">focus</span>: "CharacterName",
+}</div>
+
+<p><span class="dlabel">friends</span> contains owner IDs. <span class="dlabel">target</span> is usually a monster ID or character name. Use <span class="dlabel">get_target</span> and <span class="dlabel">get_target_of</span> to resolve visible entity objects.</p>
+
+<p><span class="dlabel">Event methods</span></p>
+
+<div class="code">character.on(event, callback);
+character.once(event, callback);
+character.all(callback);
+character.remove(listener_id);</div>
+
+<p>See <span class="rlabel" onclick="open_article('events-character','/docs/code/character-events')">Character Events</span> for event data and listener behavior.</p>
+
+<p><b>Merrit’s visits:</b> Keep an open, stocked stand in the same place for two minutes. Your account can receive one parcel per hour. No parcels within 40px of a stationary NPC or within 10px of another open stand. A stand directly in front of another, up to 15px south and 10px sideways, also receives no parcel. <span class="rlabel" onclick="render_merrit_info()">Merrit: full rules and exchange chances</span>.</p>
+<p><span class="dlabel">character.merrit</span> holds the latest server visit status: reasons, next_at, last receipt and server_now. “Ready” still requires Merrit’s physical visit. There is no CODE claim function. Moving, closing or reopening your stand, disconnecting, or losing the last valid listing restarts the two-minute settling time. The account cooldown remains one hour.</p>

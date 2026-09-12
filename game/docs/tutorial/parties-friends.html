@@ -1,0 +1,101 @@
+<p class="tutlead">Some roads are easier with company. Some are simply louder.</p>
+
+<div class="tutlinks">
+	<div
+		class="gamebutton gamebutton-small"
+		onclick="
+			btc(event);
+			open_guide('multi', '/docs/guide/multi');
+		"
+	>
+		PLAYING TOGETHER
+	</div>
+</div>
+
+{% for task in tutorial_data("parties-friends").tasks %} {% if loop.first %}
+<div class="tutdivider"></div>
+{% endif %}
+<div class="tuttaskrow"><span class="tuttask tuttask{{task}}">o</span> <span class="tuttaskname">{{task_name(task)}}</span> <span class="tuttaskd tuttaskd{{task}}">DONE</span></div>
+{% endfor %}
+
+<div class="tutpath manual">
+	<div class="tutpath-title">MANUAL</div>
+	<p>
+		Open <span class="gamebutton gamebutton-small">COM</span> to see adventurers, friends, servers, merchants, mail, and your own characters. Select a nearby adventurer to invite them, request their
+		party, or send a friend request.
+	</p>
+	<p>Party chat reaches the group. Friends can find each other's server more easily. A polite hello still works wonders.</p>
+</div>
+
+<div class="tutpath codepath">
+	<div class="tutpath-title">OPTIONAL CODE</div>
+	<!-- prettier-ignore -->
+	<div class="code">var name = "TrustedFriend";
+
+send_party_invite(name).catch(function (error) {
+	show_json(error);
+});
+
+send_friend_request(name).catch(function (error) {
+	show_json(error);
+});</div>
+	<p>Replace the name before running. For incoming requests, listen for the matching CODE event and call the matching accept function.</p>
+	<p>
+		<span class="rlabel" onclick="render_function_reference($(this).html())">send_party_invite</span> ·
+		<span class="rlabel" onclick="render_function_reference($(this).html())">send_friend_request</span> · <span class="rlabel" onclick="render_function_reference($(this).html())">party_say</span> ·
+		<span class="rlabel" onclick="render_function_reference($(this).html())">pm</span>
+	</p>
+</div>
+
+<style>
+	.tutlead {
+		color: #2b9ec9;
+		font-size: 34px;
+	}
+	.tutdivider {
+		border-top: 5px solid gray;
+		margin: 14px -24px 8px;
+	}
+	.tuttaskrow {
+		line-height: 44px;
+	}
+	.tuttask {
+		color: #4a4a4a;
+		font-size: 64px;
+		vertical-align: middle;
+	}
+	.tuttaskname {
+		color: #dc4c6e;
+		vertical-align: middle;
+	}
+	.tuttaskd {
+		color: #85c76b;
+		display: none;
+		vertical-align: middle;
+	}
+	.tutpath {
+		border: 4px solid #777;
+		margin: 12px 0;
+		padding: 10px 14px;
+		text-align: left;
+	}
+	.tutpath.manual {
+		border-color: #5e9f6e;
+	}
+	.tutpath.codepath {
+		border-color: #c58b3d;
+	}
+	.tutpath-title {
+		color: #555;
+		font-size: 24px;
+	}
+	.manual .tutpath-title {
+		color: #387649;
+	}
+	.codepath .tutpath-title {
+		color: #9a6328;
+	}
+	.tutlinks {
+		text-align: center;
+	}
+</style>

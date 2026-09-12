@@ -1,46 +1,7 @@
 services:
-  # A single-node replica set, not a plain standalone instance: the app uses
-  # multi-document transactions (tx_get/tx_save in common_engine), which
-  # MongoDB only allows on a replica set or mongos ("Transaction numbers are
-  # only allowed on a replica set member or mongos" otherwise).
-  mongo:
-    image: mongo:7
-    restart: unless-stopped
-    command: ["--replSet", "rs0", "--bind_ip_all"]
-    healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-      start_period: 10s
-    volumes:
-      - mongo-data:/data/db
-
-  # One-shot: initializes the replica set on first run, no-ops on every run
-  # after (checked via rs.status()). Exits once done; app waits on that.
-  mongo-init:
-    image: mongo:7
-    restart: "no"
-    depends_on:
-      mongo:
-        condition: service_healthy
-    entrypoint:
-      - mongosh
-      - --host
-      - mongo
-      - --quiet
-      - --eval
-      - |
-        try { rs.status(); print("replica set already initialized"); }
-        catch (e) { rs.initiate({_id: "rs0", members: [{_id: 0, host: "mongo:27017"}]}); print("replica set initiated"); }
-
   app:
     build:
       context: .
-      args:
-        ADVENTURELAND_REF: ${ADVENTURELAND_REF:-main}
-        COMMON_ENGINE_REF: ${COMMON_ENGINE_REF:-main}
-        SECRETSANDCONFIG_REF: ${SECRETSANDCONFIG_REF:-main}
     image: ${GHCR_IMAGE:-ghcr.io/jmartell72/adventureland-mongodb-docker:latest}
     restart: unless-stopped
     # The game server deregisters itself from MongoDB as part of its own
@@ -48,12 +9,10 @@ services:
     # do that before Docker SIGKILLs it, or the next boot refuses to start
     # for up to 12 minutes ("Server Exists").
     stop_grace_period: 30s
-    depends_on:
-      mongo-init:
-        condition: service_completed_successfully
     environment:
-      MONGODB_URI: mongodb://mongo:27017/adventureland?replicaSet=rs0
       GAME_SERVER_KEY: local
+    volumes:
+      - mongo-data:/data/db
     ports:
       - "8090:8090"
       - "7192:7192"

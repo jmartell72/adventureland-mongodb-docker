@@ -1,0 +1,83 @@
+<p class="tutlead">CODE is a companion, not a gate.</p>
+
+<p>Everything you have done so far can stay manual. CODE becomes useful when you want your character to watch, repeat, coordinate, or react while your attention is elsewhere.</p>
+
+<div class="tutlinks">
+	<div
+		class="gamebutton gamebutton-small"
+		onclick="
+			btc(event);
+			open_article('code-api', '/docs/code/learn/code-api');
+		"
+	>
+		CODE API &amp; PROMISES
+	</div>
+	<div
+		class="gamebutton gamebutton-small"
+		onclick="
+			btc(event);
+			render_code_docs();
+		"
+	>
+		FUNCTION REFERENCE
+	</div>
+</div>
+
+<div class="tutpath manual">
+	<div class="tutpath-title">MANUAL</div>
+	<p>Keep playing exactly as you are. Leave CODE disengaged until you want it. No adventure should demand JavaScript at the door.</p>
+</div>
+
+<div class="tutpath codepath">
+	<div class="tutpath-title">OPTIONAL CODE</div>
+	<p>Open <span class="gamebutton gamebutton-small">CODE</span>. The default script uses potions and loots chests. Change its first line to:</p>
+	<!-- prettier-ignore -->
+	<div class="code">var attack_mode = true;</div>
+	<p>Press <span class="gamebutton gamebutton-small">Engage!</span>. The rest of the default script finds suitable monsters, moves into range, and attacks. Disengage before making a large change.</p>
+	<p>Most actions return a Promise. Handle success and failure when an action matters:</p>
+	<!-- prettier-ignore -->
+	<div class="code">smart_move("goo").then(function () {
+	game_log("Arrived.");
+}).catch(function (error) {
+	show_json(error);
+});</div>
+</div>
+
+<p class="tuttip">
+	<span class="hlabel">Safety:</span> Use public functions from the CODE Docs. Do not copy code you do not understand, especially code that sells, sends, destroys, upgrades, or trades items.
+</p>
+
+<style>
+	.tutlead {
+		color: #2b9ec9;
+		font-size: 38px;
+	}
+	.tutpath {
+		border: 4px solid #777;
+		margin: 12px 0;
+		padding: 10px 14px;
+		text-align: left;
+	}
+	.tutpath.manual {
+		border-color: #5e9f6e;
+	}
+	.tutpath.codepath {
+		border-color: #c58b3d;
+	}
+	.tutpath-title {
+		color: #555;
+		font-size: 24px;
+	}
+	.manual .tutpath-title {
+		color: #387649;
+	}
+	.codepath .tutpath-title {
+		color: #9a6328;
+	}
+	.tuttip {
+		color: #555;
+	}
+	.tutlinks {
+		text-align: center;
+	}
+</style>

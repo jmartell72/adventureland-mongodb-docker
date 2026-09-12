@@ -1,0 +1,97 @@
+<p class="tutlead">Your bag keeps the useful close and the dangerous clearly labelled.</p>
+
+<div class="tutlinks">
+	<div
+		class="gamebutton gamebutton-small"
+		onclick="
+			btc(event);
+			open_guide('items', '/docs/guide/items');
+		"
+	>
+		ITEMS &amp; INVENTORY
+	</div>
+</div>
+
+{% for task in tutorial_data("interface").tasks %} {% if loop.first %}
+<div class="tutdivider"></div>
+{% endif %}
+<div class="tuttaskrow"><span class="tuttask tuttask{{task}}">o</span> <span class="tuttaskname">{{task_name(task)}}</span> <span class="tuttaskd tuttaskd{{task}}">DONE</span></div>
+{% endfor %}
+
+<div class="tutpath manual">
+	<div class="tutpath-title">MANUAL</div>
+	<p>Open <span class="gamebutton gamebutton-small">INV</span>. Right-click equipment to wear it and right-click an equipped slot to remove it. Drag items to keep the bag tidy.</p>
+	<p>HP and MP potions share a short cooldown. Use the one you need; carrying them is not the same as drinking them.</p>
+</div>
+
+<div class="tutpath codepath">
+	<div class="tutpath-title">OPTIONAL CODE</div>
+	<!-- prettier-ignore -->
+	<div class="code">var weapon = locate_item("blade");
+if (weapon !== -1) equip(weapon);
+
+use_hp_or_mp();</div>
+	<p>Replace <span class="dlabel">"blade"</span> with an item key from your bag. <span class="dlabel">use_hp_or_mp()</span> only drinks when recovery is useful.</p>
+	<p>
+		<span class="rlabel" onclick="render_function_reference($(this).html())">locate_item</span> · <span class="rlabel" onclick="render_function_reference($(this).html())">equip</span> ·
+		<span class="rlabel" onclick="render_function_reference($(this).html())">use_hp_or_mp</span>
+	</p>
+</div>
+
+<p class="tuttip"><span class="hlabel">Careful:</span> Lock anything precious before selling, upgrading, or dismantling it.</p>
+
+<style>
+	.tutlead {
+		color: #2b9ec9;
+		font-size: 34px;
+	}
+	.tutdivider {
+		border-top: 5px solid gray;
+		margin: 14px -24px 8px;
+	}
+	.tuttaskrow {
+		line-height: 44px;
+	}
+	.tuttask {
+		color: #4a4a4a;
+		font-size: 64px;
+		vertical-align: middle;
+	}
+	.tuttaskname {
+		color: #dc4c6e;
+		vertical-align: middle;
+	}
+	.tuttaskd {
+		color: #85c76b;
+		display: none;
+		vertical-align: middle;
+	}
+	.tutpath {
+		border: 4px solid #777;
+		margin: 12px 0;
+		padding: 10px 14px;
+		text-align: left;
+	}
+	.tutpath.manual {
+		border-color: #5e9f6e;
+	}
+	.tutpath.codepath {
+		border-color: #c58b3d;
+	}
+	.tutpath-title {
+		color: #555;
+		font-size: 24px;
+	}
+	.manual .tutpath-title {
+		color: #387649;
+	}
+	.codepath .tutpath-title {
+		color: #9a6328;
+	}
+	.tuttip {
+		color: #555;
+	}
+	.tutlinks {
+		text-align: center;
+	}
+</style>

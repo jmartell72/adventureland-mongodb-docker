@@ -1,0 +1,126 @@
+<p class="tutlead">Upgrading makes weapons and armor stronger. A failed attempt can destroy the item.</p>
+
+<div class="tutlinks">
+	<div
+		class="gamebutton gamebutton-small"
+		onclick="
+			btc(event);
+			open_guide('upgrading', get_guide_url('upgrading'));
+		"
+	>
+		COMPLETE UPGRADING GUIDE
+	</div>
+	<div
+		class="gamebutton gamebutton-small"
+		onclick="
+			btc(event);
+			code_eval('smart_move(&quot;scrolls&quot;)');
+		"
+	>
+		GO TO THE SCROLLS
+	</div>
+</div>
+
+{% for task in tutorial_data("upgrade").tasks %} {% if loop.first %}
+<div class="tutdivider"></div>
+{% endif %}
+<div class="tuttaskrow"><span class="tuttask tuttask{{task}}">o</span> <span class="tuttaskname">{{task_name(task)}}</span> <span class="tuttaskd tuttaskd{{task}}">DONE</span></div>
+{% endfor %}
+
+<div class="tutpath manual">
+	<div class="tutpath-title">MANUAL</div>
+	<p>Buy one Basic Upgrade Scroll. Take a cheap +0 weapon or armor piece to Cue, place both in the upgrade window, and read the chance before you commit.</p>
+	<p>
+		The item's current grade decides which scroll it needs. The item and scroll are consumed on failure. Offerings and grace can help with difficult attempts; locking prevents an item from being
+		upgraded at all.
+	</p>
+</div>
+
+<div class="tutpath codepath">
+	<div class="tutpath-title">OPTIONAL CODE</div>
+	<p>This selects a normal-grade upgradeable item. It will only attempt the upgrade after you change the confirmation line from <span class="dlabel">false</span> to <span class="dlabel">true</span>:</p>
+	<!-- prettier-ignore -->
+	<div class="code">async function upgrade_once() {
+	await smart_move(find_npc("newupgrade"));
+
+	var item_num = character.items.findIndex(function (item) {
+		return item &amp;&amp; G.items[item.name].upgrade &amp;&amp; item_grade(item) === 0;
+	});
+	var scroll_num = locate_item("scroll0");
+	if (item_num === -1 || scroll_num === -1) throw {reason: "missing_item_or_scroll"};
+
+	var preview = await upgrade(item_num, scroll_num, null, true);
+	game_log("Upgrade chance: " + (preview.chance * 100).toFixed(2) + "%");
+
+	var CONFIRM_UPGRADE = false;
+	if (!CONFIRM_UPGRADE) throw {reason: "read_the_chance_then_confirm"};
+	await upgrade(item_num, scroll_num);
+}
+
+upgrade_once().catch(function (error) {
+	show_json(error);
+});</div>
+	<p>Calculation mode consumes nothing. Read its chance, then change <span class="dlabel">CONFIRM_UPGRADE</span> to <span class="dlabel">true</span> only if you accept the risk.</p>
+	<p>
+		<span class="rlabel" onclick="render_function_reference($(this).html())">upgrade</span> · <span class="rlabel" onclick="render_function_reference($(this).html())">item_grade</span> ·
+		<span class="rlabel" onclick="render_function_reference($(this).html())">lock_item</span>
+	</p>
+</div>
+
+<p class="tuttip"><span class="hlabel">Stat scrolls:</span> Eligible armor can receive STR, INT, DEX, or another supported stat. The full guide explains which items accept them.</p>
+
+<style>
+	.tutlead {
+		color: #2b9ec9;
+		font-size: 34px;
+	}
+	.tutdivider {
+		border-top: 5px solid gray;
+		margin: 14px -24px 8px;
+	}
+	.tuttaskrow {
+		line-height: 44px;
+	}
+	.tuttask {
+		color: #4a4a4a;
+		font-size: 64px;
+		vertical-align: middle;
+	}
+	.tuttaskname {
+		color: #dc4c6e;
+		vertical-align: middle;
+	}
+	.tuttaskd {
+		color: #85c76b;
+		display: none;
+		vertical-align: middle;
+	}
+	.tutpath {
+		border: 4px solid #777;
+		margin: 12px 0;
+		padding: 10px 14px;
+		text-align: left;
+	}
+	.tutpath.manual {
+		border-color: #5e9f6e;
+	}
+	.tutpath.codepath {
+		border-color: #c58b3d;
+	}
+	.tutpath-title {
+		color: #555;
+		font-size: 24px;
+	}
+	.manual .tutpath-title {
+		color: #387649;
+	}
+	.codepath .tutpath-title {
+		color: #9a6328;
+	}
+	.tuttip {
+		color: #555;
+	}
+	.tutlinks {
+		text-align: center;
+	}
+</style>

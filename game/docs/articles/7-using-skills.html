@@ -1,0 +1,84 @@
+<p>In Code, skills are referenced by their keys from: <span class='jlabel' onclick="code_eval('show_json('+$(this).html()+')')">G.skills</span></p>
+<p>One example is <span class='dlabel'>"supershot"</span> you can check out: <span class='jlabel' onclick="code_eval('show_json('+$(this).html()+')')">G.skills.supershot</span></p>
+
+<div class='code'>
+async function use_supershot() {
+	var target = get_nearest_monster();
+	if (!target) return;
+	if (!is_in_range(target, "supershot")) return;
+	if (is_on_cooldown("supershot")) return;
+
+	try {
+		var result = await use_skill("supershot", target);
+		game_log("Supershot accepted");
+		return result;
+	} catch (error) {
+		game_log("Supershot failed: " + error.reason);
+	}
+}
+
+use_supershot();
+</div>
+
+<p><span class="dlabel">use_skill</span> returns one Promise for the server response to the skill request. Client checks such as <span class="dlabel">is_in_range</span> and <span class="dlabel">is_on_cooldown</span> avoid obviously invalid calls; the server still decides class, equipment, target, MP, range, cooldown, conditions, and any skill-specific rules.</p>
+
+<div class="code">use_skill("invis");
+use_skill("mluck", get_player("LuckyCharacter"));</div>
+
+<p>Reference functions: <span class='rlabel' onclick="render_function_reference($(this).html())">use_skill</span> <span class='rlabel' onclick="render_function_reference($(this).html())">is_in_range</span> <span class='rlabel' onclick="render_function_reference($(this).html())">is_on_cooldown</span></p>
+
+<p>Special Usage: Paladin Aura</p>
+<p>To select an aura directly, pass its state as the second argument: <span class="dlabel">use_skill("paladin_aura", "zeal")</span>. Valid states are <span class="dlabel">"bulwark"</span>, <span class="dlabel">"sanctuary"</span>, <span class="dlabel">"zeal"</span>, and <span class="dlabel">"warding"</span>. This requires Paladin level 60, costs no MP, and has a 500ms switching cooldown. The selected aura applies passively; it does not need a refresh loop. A switch removes your previous state's contribution, so one Paladin cannot maintain all four states.</p>
+
+<p>Special Usage: 3-Shot</p>
+
+<div class='code'>
+async function use_three_shot() {
+	var targets = [];
+	for (var id in parent.entities)
+		if (parent.entities[id].type == "monster" &amp;&amp; is_in_range(parent.entities[id], "3shot") &amp;&amp; targets.length &lt; 3)
+			targets.push(parent.entities[id]);
+
+	await use_skill("3shot", targets);
+}
+
+use_three_shot();
+</div>
+
+<p>Special Usage: Controlled Burst</p>
+
+<div class='code'>
+async function use_controlled_burst() {
+	var targets = [];
+	for (var id in parent.entities)
+		if (parent.entities[id].type == "monster" &amp;&amp; is_in_range(parent.entities[id], "cburst"))
+			targets.push([parent.entities[id], 100]);
+
+	await use_skill("cburst", targets);
+}
+
+use_controlled_burst();
+</div>
+
+
+<p>Special Usage: Blink</p>
+
+<div class='code'>use_skill("blink", [character.x + 10, character.y + 10]);</div>
+
+<p>Multi-target skills still return one Promise, not an array of Promises. For most skills, a resolved request means the server accepted the skill. It does not mean that a projectile has already landed. Read the returned data for skill-specific results.</p>
+
+<p>Pickpocket, fishing, and mining are timed actions. Their <span class="dlabel">use_skill</span> Promise waits past the initial <span class="dlabel">in_progress</span> response and returns the final result:</p>
+
+<div class='code'>async function fish_once() {
+	try {
+		var result = await use_skill("fishing");
+		if (result.found === false) game_log("Nothing caught this time");
+		else game_log("Caught something");
+	} catch (error) {
+		game_log("Fishing failed: " + error.reason);
+	}
+}
+
+fish_once();</div>
+
+<p>For these timed actions, <span class="dlabel">use_skill</span> waits for the final event that belongs to its own request and removes temporary listeners after success, failure, disconnect, or timeout. The optional fourth argument controls the timeout and defaults to 20 seconds. Other skills keep their normal server-response behavior.</p>

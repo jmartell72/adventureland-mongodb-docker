@@ -1,67 +1,42 @@
 # syntax=docker/dockerfile:1
 FROM node:20-bookworm-slim
 
-# Pinned to specific commit SHAs of the three upstream repos this game is
-# split across (see upstream-refs.json). The check-upstream workflow updates
-# these SHAs automatically and a rebuild picks up the new code.
-ARG ADVENTURELAND_REF=main
-ARG COMMON_ENGINE_REF=main
-ARG SECRETSANDCONFIG_REF=main
+# Private single-player fork: game source lives directly in this repo under
+# game/ (vendored from adventureland_mongodb + common_engine +
+# adventureland_secretsandconfig, with gameplay patches already applied —
+# see game/README-FORK.md). MongoDB runs inside this same container since
+# there's no scaling need for a solo instance.
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends git ca-certificates python3 make g++ \
+    && apt-get install -y --no-install-recommends ca-certificates gnupg curl python3 make g++ \
+    && curl -fsSL https://pgp.mongodb.com/server-7.0.asc | gpg --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg \
+    && echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/debian bookworm/mongodb-org/7.0 main" \
+        > /etc/apt/sources.list.d/mongodb-org-7.0.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends mongodb-org \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Main game repo (Express backend + game server source)
-RUN git clone https://github.com/kaansoral/adventureland_mongodb.git . \
-    && git checkout "$ADVENTURELAND_REF"
+COPY game/ ./
 
-# Private self-hosted server patches: this game ships two account-penalty
-# systems (recurring "debuff" conditions) that only make sense for the
-# official commercial release and actively hurt a private instance:
-#   - drm_check: gates a Steam/Mac-App-Store ownership check; without that
-#     integration configured, it permanently applies "Authorization
-#     Failure" (-85% gold/luck, -20% xp) to every character.
-#   - email verification: "Not Verified" (-25% gold/luck) never clears
-#     because sending the verification email requires SES keys this
-#     deployment doesn't have configured.
-# Re-applied on every build since the repo is freshly cloned each time; the
-# grep after each sed fails the build loudly if upstream ever changes these
-# lines, instead of silently shipping an unpatched image.
-RUN sed -i 's/drm_check: 1,/drm_check: 0,/' node/server.js \
-    && grep -q 'drm_check: 0,' node/server.js \
-    && sed -i 's/everification: random_string(12),/everification: random_string(12),\n\t\t\t\t\tverified: true,/' api.js \
-    && grep -q 'verified: true,' api.js
-
-# Shared engine, symlinked as ./common in the upstream dev setup — here it's
-# just a real directory in the same spot, which the app code reads from.
-RUN git clone https://github.com/kaansoral/common_engine.git common \
-    && cd common && git checkout "$COMMON_ENGINE_REF"
-
-# Config template, symlinked as ./secretsandconfig upstream. Ships with
-# randomized dev defaults per its README; entrypoint.sh rewrites fields from
-# env vars at container start (see scripts/patch-config.js). Stashed a second
-# copy at .secretsandconfig-template: in production, secretsandconfig/ is
-# bind-mounted to a persistent host directory (see docker-compose.prod.yml),
-# which shadows this build-time clone, so entrypoint.sh seeds it from the
-# template on first boot. Any keys you add by hand there (Stripe, Discord,
-# etc.) survive rebuilds and restarts since patch-config.js only ever
-# mutates specific fields, not the whole file.
-RUN git clone https://github.com/kaansoral/adventureland_secretsandconfig.git secretsandconfig \
-    && cd secretsandconfig && git checkout "$SECRETSANDCONFIG_REF" && rm -rf .git \
-    && cd .. && cp -a secretsandconfig .secretsandconfig-template
+# Stash a pristine copy of secretsandconfig: in production it's bind-mounted
+# to a persistent host directory (shadowing this build-time copy), so
+# entrypoint.sh seeds it from here on first boot. Keys you add by hand there
+# survive rebuilds since patch-config.js only ever mutates specific fields.
+RUN cp -a secretsandconfig .secretsandconfig-template
 
 RUN npm install --omit=dev \
     && cd node && npm install --omit=dev
+
+RUN mkdir -p /data/db
 
 COPY scripts/entrypoint.sh /app/entrypoint.sh
 COPY scripts/patch-config.js /app/scripts/patch-config.js
 RUN chmod +x /app/entrypoint.sh
 
 ENV NODE_ENV=production \
-    MONGODB_URI=mongodb://mongo:27017/adventureland \
+    MONGODB_URI=mongodb://127.0.0.1:27017/adventureland?replicaSet=rs0 \
     GAME_SERVER_KEY=local
 
 EXPOSE 8090 7192

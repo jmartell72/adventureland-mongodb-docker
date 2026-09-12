@@ -1,23 +1,22 @@
-# Adventure Land (MongoDB Edition) — Docker Mirror
+# Adventure Land — Private Solo Fork
 
-Builds and publishes a Docker image of [kaansoral/adventureland_mongodb](https://github.com/kaansoral/adventureland_mongodb),
-its shared engine ([common_engine](https://github.com/kaansoral/common_engine)), and its config template
-([adventureland_secretsandconfig](https://github.com/kaansoral/adventureland_secretsandconfig)), and keeps the image
-up to date as those three repos change.
+A private, single-player fork of [kaansoral/adventureland_mongodb](https://github.com/kaansoral/adventureland_mongodb)
+(merged with its `common_engine` and `adventureland_secretsandconfig` dependencies), built into one Docker image
+with MongoDB bundled inside the same container.
 
-This repo contains no game source itself — the `Dockerfile` clones all three upstream repos at build time, pinned to
-the commit SHAs recorded in [`upstream-refs.json`](upstream-refs.json).
+Game source lives directly in this repo under [`game/`](game/) — see [`game/README-FORK.md`](game/README-FORK.md)
+for exactly which upstream commits this was forked from and what gameplay patches have been applied (Steam/MAS
+ownership check disabled, email verification bypassed, four raid-boss events scaled down to be soloable). **This is
+a fork, not a mirror** — it does not auto-update from upstream. GitHub Actions rebuilds the image on every push to
+this repo's own `main`; picking up upstream changes is a manual, reviewed step (see `game/README-FORK.md`).
 
-## How auto-update works
+## Why MongoDB is bundled in the container
 
-- **`check-upstream.yml`** runs every 6 hours (and on demand). It resolves the current HEAD commit of each of the
-  three upstream repos and, if any changed, updates `upstream-refs.json` and pushes the commit.
-- **`docker-build.yml`** runs on every push to `main` that touches `upstream-refs.json` (or the Dockerfile/scripts),
-  and on demand. It builds the image pinned to the refs in that file and pushes it to
-  `ghcr.io/<this-repo>:latest` and `ghcr.io/<this-repo>:<adventureland_mongodb-sha>`.
-
-So: upstream changes → `check-upstream` bumps the pin and pushes → that push triggers `docker-build` → a new image
-lands in GHCR, generally within a few hours of the upstream change.
+This is a single-player instance with no need to scale the database separately, so `Dockerfile` installs
+`mongodb-org` alongside Node and `scripts/entrypoint.sh` starts `mongod` itself before the app. It still runs as a
+single-node **replica set** (not a plain standalone instance) — the app uses multi-document transactions
+(`tx_get`/`tx_save`), which MongoDB only allows on a replica set or `mongos`. `entrypoint.sh` initializes the
+replica set on first boot only (checks `rs.status()`, no-ops after that).
 
 ## Running locally
 
@@ -25,33 +24,24 @@ lands in GHCR, generally within a few hours of the upstream change.
 docker compose up --build
 ```
 
-This starts MongoDB plus the app (Express backend on `:8090`, game server on `:7192`). The config template ships
-with randomized dev defaults, which is fine for local use — see the
-[upstream README](https://github.com/kaansoral/adventureland_mongodb#readme) for production configuration
-(Stripe/Steam/Discord/SES keys, TLS, etc.) if you want those features.
-
-Mongo runs as a single-node **replica set**, not a plain standalone instance — the app uses multi-document
-transactions (`tx_get`/`tx_save` in `common_engine`, used by signup and other flows), which MongoDB only allows on a
-replica set or `mongos`; a standalone instance fails with `Transaction numbers are only allowed on a replica set
-member or mongos`. The `mongo-init` service initializes the replica set on first run only (it checks `rs.status()`
-and no-ops if already done) and the app waits for it to finish before starting.
+Starts the app (Express backend on `:8090`, game server on `:7192`) with MongoDB inside the same container. The
+vendored config template ships with randomized dev defaults, fine for local use.
 
 ## Pulling the published image
 
 ```sh
-docker pull ghcr.io/<owner>/<repo>:latest
+docker pull ghcr.io/jmartell72/adventureland-mongodb-docker:latest
 ```
 
-The package is public, so this works with no login.
+Public package, no login needed.
 
 ## Production deployment (Traefik)
 
-`docker-compose.prod.yml` is a standalone file — copy just that one file to a host already running Traefik with an
-external proxy network and run it as-is; it doesn't reference or depend on `docker-compose.yml`. It:
+`docker-compose.prod.yml` is standalone — copy just that one file to a host already running Traefik with an
+external proxy network and run it as-is. It:
 
-- Pulls the published image (no build tools needed on the host) and runs Mongo alongside it.
-- Joins the app container to your `t2_proxy` network (for Traefik) and an `internal` network (for Mongo) — no ports
-  are published to the host.
+- Pulls the published image (no build tools needed on the host) — MongoDB runs inside it.
+- Joins the app container to your `t2_proxy` network — no ports published to the host.
 - Adds two routers, since the web backend (Express, `:8090`) and the game server (Socket.IO, `:7192`) are separate
   HTTP servers in the same container: one for `al.$DOMAINNAME`, one for `al-ws.$DOMAINNAME`. Rename both to whatever
   subdomains you want — they just need matching DNS records pointed at the host.
@@ -84,8 +74,8 @@ docker compose -f docker-compose.prod.yml pull
 docker compose -f docker-compose.prod.yml up -d
 ```
 
-Since the image auto-updates in GHCR (see above), redeploying is just re-running those two commands — add a cron
-job or a `docker compose ... pull && docker compose ... up -d` on a timer if you want that automated too.
+Since this is now a fork (see above), redeploying only picks up a new image after *you've* pushed a change and CI
+has rebuilt it — there's no more background auto-update pulling in upstream commits.
 
 Notes:
 
@@ -109,7 +99,7 @@ are meant to prevent this by giving the game server real time to deregister on e
 you still hit it (e.g. `docker kill`, an OOM, a host reboot), you can clear it immediately instead of waiting:
 
 ```sh
-docker exec <mongo-container> mongosh --quiet adventureland --eval \
+docker exec al_app mongosh --quiet adventureland --eval \
   'db.server.updateOne({_id:"SR_USI"}, {$set:{online:false}})'
 ```
 
@@ -118,9 +108,10 @@ you changed those.) The container will start cleanly on its next restart attempt
 
 **Fresh database — "Game hasn't loaded yet" and characters won't spawn.** A brand-new MongoDB has no map/world
 data at all (only what signup/character-creation create), and the client waits for map data that will never
-arrive. See the upstream README's ["Seeding Game Data"](https://github.com/kaansoral/adventureland_mongodb#seeding-game-data)
-section — import the RDBMS dump via the `agentic/_migrate_rdbms.py` script (needs Python 3 + `pymongo`, run from a
-container or host that can reach `mongo:27017`). This only touches `map`/`upload` collections in that dump as of
-writing, not accounts, so it's safe to run against a database that already has real users. **The game server loads
-map geometry into memory once at boot** (`node/server.js`'s `init_game()`), so restart the `app` container after
-importing.
+arrive. See [`game/README-FORK.md`](game/README-FORK.md) or the upstream README's
+["Seeding Game Data"](https://github.com/kaansoral/adventureland_mongodb#seeding-game-data) section — import the
+RDBMS dump via `game/agentic/_migrate_rdbms.py` (needs Python 3 + `pymongo`, run from a container or host that can
+reach the app container's Mongo on `127.0.0.1:27017` inside it, e.g. `docker exec -i al_app ...` or a container on
+the same network). This only touches `map`/`upload` collections in that dump, not accounts, so it's safe to run
+against a database that already has real users. **The game server loads map geometry into memory once at boot**
+(`node/server.js`'s `init_game()`), so restart the `app` container after importing.
