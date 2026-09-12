@@ -2,6 +2,7 @@ var fs = require("fs"),
 	path = require("path");
 var keys = require("./secretsandconfig/keys");
 var options = require("./secretsandconfig/options");
+var settings = require("./settings.js"); // [private fork] see settings.js
 var { get_seo_paths } = require("./seo_paths.js");
 
 eval("" + fs.readFileSync(path.resolve(__dirname, "common/init.js")));
@@ -77,6 +78,87 @@ eval("" + fs.readFileSync(path.resolve(__dirname, "mcp_api.js")));
 eval("" + fs.readFileSync(path.resolve(__dirname, "crons.js")));
 eval("" + fs.readFileSync(path.resolve(__dirname, "common/admin.js")));
 eval("" + fs.readFileSync(path.resolve(__dirname, "admin_dashboard.js")));
+
+// ==================== [private fork] Admin settings panel ====================
+// Single-admin settings UI - gated by the same is_admin() check as
+// /admin/executor etc. Reads/writes settings.js, which persists to
+// secretsandconfig/settings.json (hand-editable, hot-reloaded, no restart
+// needed except where noted below).
+
+function admin_panel_html(s, saved) {
+	function esc(v) {
+		return ("" + v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+	}
+	return `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Server Settings</title>
+<style>
+	body { background:#111; color:#ddd; font-family:monospace; padding:24px; max-width:640px; margin:0 auto; }
+	h1 { color:#fff; font-size:20px; }
+	fieldset { border:1px solid #444; border-radius:6px; margin-bottom:16px; padding:12px 16px; }
+	legend { color:#9cf; padding:0 6px; }
+	label { display:block; margin:10px 0 4px; color:#ccc; }
+	input[type=text], input[type=number] { width:100%; box-sizing:border-box; background:#000; color:#eee; border:1px solid #555; border-radius:4px; padding:6px 8px; font-family:monospace; }
+	.hint { color:#888; font-size:12px; margin-top:2px; }
+	button { background:#2a6; color:#fff; border:none; border-radius:4px; padding:10px 20px; font-size:14px; cursor:pointer; margin-top:12px; }
+	button:hover { background:#3b7; }
+	.saved { color:#7d7; margin-bottom:12px; }
+	.path { color:#666; font-size:12px; }
+</style></head>
+<body>
+	<h1>Server Settings</h1>
+	${saved ? '<div class="saved">Saved.</div>' : ""}
+	<form method="post" action="/admin/panel/save">
+		<fieldset>
+			<legend>Progression pacing</legend>
+			<label>XP multiplier<input type="number" step="0.1" min="0" name="xp_multiplier" value="${esc(s.xp_multiplier)}"></label>
+			<label>Gold multiplier<input type="number" step="0.1" min="0" name="gold_multiplier" value="${esc(s.gold_multiplier)}"></label>
+			<label>Luck multiplier<input type="number" step="0.1" min="0" name="luck_multiplier" value="${esc(s.luck_multiplier)}"></label>
+			<div class="hint">Takes effect immediately, no restart.</div>
+		</fieldset>
+		<fieldset>
+			<legend>Account limits</legend>
+			<label>Character limit<input type="number" step="1" min="1" name="character_limit" value="${esc(s.character_limit)}"></label>
+			<label>IP limit<input type="number" step="1" min="1" name="ip_limit" value="${esc(s.ip_limit)}"></label>
+			<div class="hint">Takes effect immediately, no restart.</div>
+		</fieldset>
+		<fieldset>
+			<legend>Discord relay</legend>
+			<label>Bot token<input type="text" name="discord_token" value="${esc(s.discord_token)}" placeholder="leave blank to stay dormant"></label>
+			<label>Chat channel ID<input type="text" name="discord_chat_channel" value="${esc(s.discord_chat_channel)}"></label>
+			<div class="hint">Dormant with no token set. Changing the token requires a container restart to take effect.</div>
+		</fieldset>
+		<button type="submit">Save</button>
+	</form>
+	<p class="path">Also hand-editable at ${esc(settings.path)} - changes there are picked up automatically within a couple seconds.</p>
+</body></html>`;
+}
+
+app.get("/admin/panel", async (req, res) => {
+	var user = await get_user(req);
+	if (!is_admin(user)) return res.status(403).send("Forbidden");
+	res.send(admin_panel_html(settings.get(), req.query.saved === "1"));
+});
+
+app.post("/admin/panel/save", async (req, res) => {
+	var user = await get_user(req);
+	if (!is_admin(user)) return res.status(403).send("Forbidden");
+	var body = req.body || {};
+	function num(value, fallback) {
+		var n = Number(value);
+		return Number.isFinite(n) ? n : fallback;
+	}
+	var current = settings.get();
+	settings.update({
+		xp_multiplier: num(body.xp_multiplier, current.xp_multiplier),
+		gold_multiplier: num(body.gold_multiplier, current.gold_multiplier),
+		luck_multiplier: num(body.luck_multiplier, current.luck_multiplier),
+		character_limit: Math.max(1, Math.round(num(body.character_limit, current.character_limit))),
+		ip_limit: Math.max(1, Math.round(num(body.ip_limit, current.ip_limit))),
+		discord_token: "" + (body.discord_token || ""),
+		discord_chat_channel: "" + (body.discord_chat_channel || ""),
+	});
+	res.redirect("/admin/panel?saved=1");
+});
 
 // Stripe
 try {

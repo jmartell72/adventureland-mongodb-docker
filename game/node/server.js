@@ -9,6 +9,7 @@ var server = {
 };
 var keys = require("./../secretsandconfig/keys");
 var options = require("./../secretsandconfig/options");
+var settings = require("./../settings.js"); // [private fork] see settings.js
 var server_key = process.argv[process.argv.length - 1];
 var server_def = options.servers[server_key];
 var region = server_def.region;
@@ -29,11 +30,15 @@ app.get("/", (req, res) => {
 //var io=require('socket.io')(app,{pingInterval:2400,pingTimeout:6000});
 const SocketIOServer = require("socket.io").Server;
 const msgpack_parser = require("./msgpack_parser");
+// [private fork] token comes from the admin panel (settings.json), not
+// keys.js - dormant (no connection attempted) unless a token is actually
+// set. Changing the token requires a restart to take effect (the relay
+// object below is only constructed once at boot).
 const discord_relay = require("./logic/discord")({
-	token: keys.discord_token,
-	chatChannel: options.discord_chat_channel,
+	token: settings.get().discord_token || keys.discord_token,
+	chatChannel: settings.get().discord_chat_channel || options.discord_chat_channel,
 	realm: region + " " + server_name,
-	enabled: !Dev,
+	enabled: !!(settings.get().discord_token || keys.discord_token),
 });
 const anniversary_rules = require("./logic/anniversary_event");
 const market_patron_rules = require("./logic/market_patron")((a, b) => simple_distance(a, b));
@@ -329,6 +334,24 @@ if (server_name == "HARDCORE") {
 } else {
 	gameplay = "normal";
 }
+
+// [private fork] Solo-server settings: xp/gold/luck multipliers and
+// character/ip limits are admin-configurable (see settings.js and the
+// /admin/panel route in main.js), hot-reloaded via settings.js's own file
+// watchdog - re-derive from the base values above on every change instead
+// of multiplying in place, or repeated reloads would compound.
+var base_luckm = luckm,
+	base_xpm = xpm,
+	base_goldm = goldm;
+function apply_private_settings(s) {
+	luckm = base_luckm * s.luck_multiplier;
+	xpm = base_xpm * s.xp_multiplier;
+	goldm = base_goldm * s.gold_multiplier;
+	options.character_limit = s.character_limit;
+	options.ip_limit = s.ip_limit;
+}
+apply_private_settings(settings.get());
+settings.onChange(apply_private_settings);
 
 // B.u_boundary=12; B.u_vision=12; B["vision"]=[320,270]
 // B.vision[0]*=100; B.vision[1]*=100;
