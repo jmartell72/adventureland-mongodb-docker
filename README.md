@@ -87,6 +87,16 @@ Notes:
 - A static IP on `t2_proxy` isn't set — add `ipv4_address:` under the `app` service's `t2_proxy` network entry if
   your setup expects one; pick an address outside your other containers' range.
 
+## Admin settings panel
+
+`al.$DOMAINNAME/admin/panel` — a small settings UI (XP/gold/luck multipliers, character/IP limits, Discord relay
+token). No login beyond just being on this server: `Local: true` + `unsecure_admin: true` (both set by default)
+make every request admin, same as the stock `/admin/executor`/`/admin/renderer` routes.
+
+Settings persist to `secretsandconfig/settings.json` (so `$DATA_DIR/secretsandconfig/settings.json` in production) —
+hand-edit it directly if you prefer; a file watcher picks up changes within ~2 seconds, no restart needed. The one
+exception is the Discord token, which only takes effect on the next boot (the relay is constructed once at startup).
+
 ## Troubleshooting
 
 **Container stuck restart-looping, logs show `Server Exists: SR_<region><name>`.** The game server refuses to
