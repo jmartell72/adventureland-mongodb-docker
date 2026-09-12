@@ -272,17 +272,28 @@ function build_ai_code(config, partner_display_name) {
 // the public domain/Traefik back to itself - fragile (depends on the
 // public address always being reachable from inside its own container) and
 // pointlessly slow. Call the local eval endpoint directly instead.
-async function local_eval(character_name, code) {
+// Also exported directly (not just via local_eval below): main.js's
+// /admin/executor snippets run in the WEB process (main.js's own eval
+// scope), a separate Node process from node/server.js - players, name_to_id,
+// G, instances, add_item, transport_player_to, etc. only exist over there.
+// raw_eval/local_eval are the only bridge between the two; a snippet that
+// references those names directly, without going through one of these,
+// silently no-ops (ReferenceError inside node/server.js's own try/catch).
+async function raw_eval(code) {
 	var def = server_def();
 	var keys = require("./secretsandconfig/keys");
 	var url = "http://127.0.0.1:" + def.local_port + def.api_path + "eval";
-	var wrapped = "var player = players[name_to_id['" + character_name + "']]; if (player) { " + code + " }";
 	var response = await fetch(url, {
 		method: "POST",
 		headers: { "Content-Type": "application/x-www-form-urlencoded" },
-		body: new URLSearchParams({ spass: keys.ACCESS_MASTER, code: wrapped, data: "{}" }).toString(),
+		body: new URLSearchParams({ spass: keys.ACCESS_MASTER, code: code, data: "{}" }).toString(),
 	});
 	return JSON.parse(await response.text());
+}
+
+async function local_eval(character_name, code) {
+	var wrapped = "var player = players[name_to_id['" + character_name + "']]; if (player) { " + code + " }";
+	return raw_eval(wrapped);
 }
 
 // get_display_name(stored_name) resolves settings.json's lowercase key
@@ -341,4 +352,6 @@ module.exports = {
 	start_ticking: start_ticking,
 	sync_with_settings: sync_with_settings,
 	connections: connections,
+	raw_eval: raw_eval,
+	local_eval: local_eval,
 };

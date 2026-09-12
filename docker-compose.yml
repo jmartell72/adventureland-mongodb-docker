@@ -11,6 +11,7 @@ services:
     stop_grace_period: 30s
     environment:
       GAME_SERVER_KEY: local
+      DISCORD_ALERT_WEBHOOK: ${DISCORD_ALERT_WEBHOOK:-}
     volumes:
       - mongo-data:/data/db
       - backups:/backups

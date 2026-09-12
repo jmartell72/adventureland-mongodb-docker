@@ -3,6 +3,21 @@ set -euo pipefail
 
 cd /app
 
+# [private fork] Ops alerts - separate from the in-game Discord chat relay
+# (which lives in node/server.js and only works while that process is
+# healthy). This is a plain webhook POST from bash, so it still fires on the
+# failure modes an in-process relay can't report on its own: a crashed game
+# process, or the container never coming up in the first place. Dormant
+# (no-op) unless DISCORD_ALERT_WEBHOOK is set - create a webhook URL from a
+# Discord channel's Integrations settings, no bot/token needed.
+discord_alert() {
+	[ -z "${DISCORD_ALERT_WEBHOOK:-}" ] && return 0
+	local payload
+	payload=$(node -e 'process.stdout.write(JSON.stringify({content: process.argv[1]}))' "$1" 2>/dev/null) || return 0
+	curl -fsS -m 5 -X POST -H "Content-Type: application/json" -d "$payload" "$DISCORD_ALERT_WEBHOOK" >/dev/null 2>&1 \
+		|| echo "[entrypoint] discord alert failed"
+}
+
 echo "[entrypoint] starting mongod"
 mongod --replSet rs0 --dbpath /data/db --logpath /data/db/mongod.log &
 MONGO_PID=$!
@@ -38,6 +53,8 @@ MAIN_PID=$!
 node node/server.js "${GAME_SERVER_KEY:-local}" &
 GAME_PID=$!
 
+discord_alert "🟢 Adventure Land started"
+
 # Scheduled world-data backups (accounts, characters, map data - everything)
 # to /backups (bind-mount that to a host directory in production). See
 # scripts/backup.sh for the actual mongodump + pruning; the admin panel's
@@ -45,7 +62,7 @@ GAME_PID=$!
 (
 	while true; do
 		sleep "$(( ${BACKUP_INTERVAL_HOURS:-6} * 3600 ))"
-		/app/scripts/backup.sh || echo "[entrypoint] scheduled backup failed"
+		/app/scripts/backup.sh || { echo "[entrypoint] scheduled backup failed"; discord_alert "🟡 Adventure Land: scheduled backup failed"; }
 	done
 ) &
 BACKUP_LOOP_PID=$!
@@ -54,6 +71,7 @@ SHUTTING_DOWN=0
 term() {
 	if [ "$SHUTTING_DOWN" = "1" ]; then return 0; fi
 	SHUTTING_DOWN=1
+	discord_alert "🟡 Adventure Land stopping (signal received)"
 
 	kill -TERM "$BACKUP_LOOP_PID" 2>/dev/null || true
 	kill -TERM "$MAIN_PID" "$GAME_PID" 2>/dev/null || true
@@ -79,5 +97,11 @@ trap term TERM INT
 
 wait -n "$MAIN_PID" "$GAME_PID"
 EXIT_CODE=$?
+# If SHUTTING_DOWN is already 1, term() (the trap) killed these children
+# itself in response to a signal (docker stop/restart) - expected, already
+# alerted above. Otherwise one of them exited on its own - a real crash.
+if [ "$SHUTTING_DOWN" != "1" ]; then
+	discord_alert "🔴 Adventure Land: a process exited unexpectedly (code $EXIT_CODE), container is shutting down"
+fi
 term
 exit "$EXIT_CODE"

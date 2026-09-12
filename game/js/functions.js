@@ -1673,6 +1673,7 @@ function show_commander(fvalue) {
 			/*,lineNumbers:true*/
 		},
 	);
+	enable_autocomplete(codemirror_render3);
 	codemirror_render3.focus();
 }
 
@@ -1702,6 +1703,7 @@ function show_snippet(fvalue) {
 			/*,lineNumbers:true*/
 		},
 	);
+	enable_autocomplete(codemirror_render3);
 	codemirror_render3.focus();
 }
 
@@ -1737,6 +1739,7 @@ function show_character_snippet(name) {
 			/*,lineNumbers:true*/
 		},
 	);
+	enable_autocomplete(window["codemirror_render" + name]);
 	window["codemirror_render" + name].focus();
 }
 
@@ -2066,6 +2069,21 @@ function toggle_runner() {
 }
 
 var last_hint = undefined;
+// [private fork] Tab-completion (Ctrl-Space, or auto on "."). Not cheating
+// solo - there's no anti-cheat or other-players concern on a private
+// server, and this is a QoL tool, not new capability: everything it
+// suggests is something you could already type yourself. Uses CodeMirror's
+// stock javascript-hint addon (see htmls/index.html for the vendored
+// addon files), which reflects the real live `window` global and the
+// token's local vars - suggestions match what's actually there rather than
+// a hand-maintained, driftable list.
+function enable_autocomplete(editor) {
+	editor.setOption("extraKeys", Object.assign({}, editor.getOption("extraKeys") || {}, { "Ctrl-Space": "autocomplete" }));
+	editor.on("inputRead", function (cm, change) {
+		if (change.text[0] === ".") cm.showHint({ completeSingle: false });
+	});
+}
+
 function code_logic() {
 	backup_code_cache_once();
 	window.codemirror_render = CodeMirror(
@@ -2090,6 +2108,7 @@ function code_logic() {
 	codemirror_render.on("change", function () {
 		code_change = true;
 	});
+	enable_autocomplete(codemirror_render);
 	listen_for_hints(codemirror_render);
 }
 

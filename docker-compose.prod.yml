@@ -46,6 +46,13 @@ services:
       PUBLIC_SECURE: "true"
       BACKUP_INTERVAL_HOURS: ${BACKUP_INTERVAL_HOURS:-6}
       BACKUP_KEEP: ${BACKUP_KEEP:-14}
+      # Optional: a Discord channel's webhook URL (Channel Settings ->
+      # Integrations -> Webhooks -> New Webhook -> Copy URL). Leave unset to
+      # stay dormant. See scripts/entrypoint.sh - this is a separate, more
+      # reliable path than the in-game chat relay for start/stop/crash/backup
+      # failure alerts, since it doesn't depend on the game process being
+      # healthy enough to send it.
+      DISCORD_ALERT_WEBHOOK: ${DISCORD_ALERT_WEBHOOK:-}
     labels:
       - "traefik.enable=true"
       ## --- Web backend (Express, port 8090) ---

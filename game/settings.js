@@ -23,6 +23,9 @@ var DEFAULTS = {
 	// design/monsters.js, not scaled here.
 	monster_respawn_multiplier: 1,
 	monster_aggro_multiplier: 1,
+	// Vanilla default is 42. The client already sizes its inventory grid
+	// from character.isize (js/html.js), so raising this needs no UI patch.
+	inventory_size: 42,
 	// { "charactername": { enabled, mode: "farm"|"merchant", map, party_with,
 	//   auto_sell, mluck_targets: ["charactername", ...] } } — see bots.js.
 	// Key is the character's lowercase stored name (matches the "character"

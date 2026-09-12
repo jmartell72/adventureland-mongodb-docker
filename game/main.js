@@ -164,7 +164,8 @@ function admin_panel_html(s, saved, backup_status, characters) {
 			<legend>Account limits</legend>
 			<label>Character limit<input type="number" step="1" min="1" name="character_limit" value="${esc(s.character_limit)}"></label>
 			<label>IP limit<input type="number" step="1" min="1" name="ip_limit" value="${esc(s.ip_limit)}"></label>
-			<div class="hint">Takes effect immediately, no restart.</div>
+			<label>Inventory size<input type="number" step="1" min="9" max="500" name="inventory_size" value="${esc(s.inventory_size)}"></label>
+			<div class="hint">Takes effect immediately, no restart. Inventory size: vanilla default is 42; the client's inventory grid sizes itself to this automatically.</div>
 		</fieldset>
 		<fieldset>
 			<legend>Ambient monster difficulty</legend>
@@ -350,6 +351,7 @@ app.post("/admin/panel/save", async (req, res) => {
 		luck_multiplier: num(body.luck_multiplier, current.luck_multiplier),
 		character_limit: Math.max(1, Math.round(num(body.character_limit, current.character_limit))),
 		ip_limit: Math.max(1, Math.round(num(body.ip_limit, current.ip_limit))),
+		inventory_size: Math.max(9, Math.min(500, Math.round(num(body.inventory_size, current.inventory_size)))),
 		monster_respawn_multiplier: Math.max(0.05, num(body.monster_respawn_multiplier, current.monster_respawn_multiplier)),
 		monster_aggro_multiplier: Math.max(0, num(body.monster_aggro_multiplier, current.monster_aggro_multiplier)),
 		discord_token: "" + (body.discord_token || ""),

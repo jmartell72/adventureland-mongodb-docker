@@ -1,18 +1,29 @@
 {% extends "htmls/base.html" %}
 {% block libraries %}
-	<link href="/js/libraries/codemirror/{{domain.libs.codemirror}}/codemirror.css" rel="stylesheet" type="text/css"/>
-	<script src="/js/libraries/codemirror/{{domain.libs.codemirror}}/codemirror.js"></script>
-	<script src="/js/libraries/codemirror/{{domain.libs.codemirror}}/css.js"></script>
-	<script src="/js/libraries/codemirror/{{domain.libs.codemirror}}/htmlmixed.js"></script>
-	<script src="/js/libraries/codemirror/{{domain.libs.codemirror}}/javascript.js"></script>
+	<!-- [private fork] Fixed: the old codemirror path/version here pointed at
+	     files that were never actually vendored in this fork - every asset
+	     404'd and CodeMirror() would throw, so this page never worked in a
+	     real browser. Switched to the version+path index.html already uses,
+	     which is genuinely on disk. Also added the show-hint/javascript-hint
+	     addons for real tab-completion (Ctrl-Space, or typing "."). -->
+	<link href="/js/codemirror/{{domain.cm_version}}/codemirror.css" rel="stylesheet" type="text/css"/>
+	<link href="/js/codemirror/{{domain.cm_version}}/addon/hint/show-hint.css" rel="stylesheet" type="text/css"/>
+	<script src="/js/codemirror/{{domain.cm_version}}/codemirror.js"></script>
+	<script src="/js/codemirror/{{domain.cm_version}}/javascript.js"></script>
+	<script src="/js/codemirror/{{domain.cm_version}}/addon/hint/show-hint.js"></script>
+	<script src="/js/codemirror/{{domain.cm_version}}/addon/hint/javascript-hint.js"></script>
 {% endblock %}
 {% block body %}
-	<!-- [private fork] Quick-insert snippets + inline help. Server-side eval,
-	     same as before - snippets just save re-typing the common shapes for a
-	     one-person server (give item/gold/xp, teleport, spawn a monster near
-	     you). Every snippet reuses a real internal function (add_item,
-	     transport_player_to, new_monster) rather than hand-rolling item/xp
-	     math, so behavior matches what the game itself does elsewhere. -->
+	<!-- [private fork] Quick-insert snippets + inline help. This page's code
+	     runs in the WEB process (main.js), a separate Node process from the
+	     game server (node/server.js) - players/name_to_id/G/instances/
+	     add_item/transport_player_to only exist over there, so every snippet
+	     that needs them goes through bots.local_eval()/bots.raw_eval() (the
+	     same bridge bots.js itself uses), which round-trips to the game
+	     server's own /eval endpoint and runs the inner code string in ITS
+	     scope. Every snippet still reuses a real internal function
+	     (add_item, transport_player_to, new_monster) rather than
+	     hand-rolling item/xp math. -->
 	<select id="snippet-picker" style="font-family:Pixel; font-size:16px; margin-bottom:8px; width:100%; box-sizing:border-box;">
 		<option value="">Insert snippet...</option>
 		<option value="give_gold">Give gold</option>
@@ -22,6 +33,7 @@
 		<option value="spawn_monster">Spawn monster near character</option>
 		<option value="list_online">List online characters</option>
 		<option value="mluck_now">Mluck a character now</option>
+		<option value="unlock_bank">Unlock all bank pages for character</option>
 	</select>
 	<div id="code"></div>
 	<div id="execute" class="button button-block btn btn-primary" onclick="execute()">Execute!</div>
@@ -29,17 +41,18 @@
 	<details style="margin-top: 16px; font-family: Pixel; font-size: 16px; color: #ccc;">
 		<summary style="cursor: pointer; color: #FD9610;">Help</summary>
 		<div style="padding: 8px 0; line-height: 1.5;">
-			<p>Code runs server-side as <code>async () => { ...your code... }</code> in node/server.js's own scope. Set <code>output</code> to return a value; <code>console.log(...)</code>/<code>console.error(...)</code> go to [LOGS].</p>
-			<p><b>Useful globals:</b></p>
+			<p>Code runs as <code>async () => { ...your code... }</code> in main.js's (the web process's) own scope. Set <code>output</code> to return a value; <code>console.log(...)</code>/<code>console.error(...)</code> go to [LOGS].</p>
+			<p><b>Useful globals here (main.js's scope):</b></p>
 			<ul>
 				<li><code>req</code> - the HTTP request (has <code>.body</code>, cookies, etc.)</li>
 				<li><code>db</code> - the MongoDB database handle (e.g. <code>await db.collection("character").findOne({name:"charname"})</code> - note: lowercase stored name, not the display name)</li>
-				<li><code>players[name_to_id["DisplayName"]]</code> - a live, connected character's full server-side state (use the original-casing display name here, not the lowercase stored name)</li>
-				<li><code>instances[player.in]</code> - the map instance a player is standing in; <code>.monsters</code> is its live monster pool</li>
-				<li><code>G</code> - all static game data/definitions (<code>G.items</code>, <code>G.monsters</code>, <code>G.maps</code>, <code>G.conditions</code>, ...)</li>
 				<li><code>settings</code> - this fork's settings.js module (<code>settings.get()</code>, <code>settings.update({...})</code>) - same data as the Admin Panel</li>
 				<li><code>bots</code> - this fork's bots.js module (<code>bots.connections</code>, <code>bots.is_connected(name)</code>)</li>
-				<li><code>add_item(player, {name:"itemname"}, {q: quantity})</code>, <code>transport_player_to(player, "mapname")</code>, <code>new_monster(instanceName, mapDefObject)</code> - real internal functions, not reimplementations</li>
+			</ul>
+			<p><b>Reaching the game server (a separate process):</b> <code>players</code>, <code>name_to_id</code>, <code>G</code>, <code>instances</code>, <code>add_item(...)</code>, <code>transport_player_to(...)</code>, <code>new_monster(...)</code> only exist inside node/server.js, not here. To use them, pass a code string through:</p>
+			<ul>
+				<li><code>await bots.local_eval("DisplayName", "...code using player...")</code> - runs the code string over there with <code>player</code> already resolved to that character's live state (original-casing display name, not the lowercase stored name); no-ops if that character isn't connected.</li>
+				<li><code>await bots.raw_eval("...code...")</code> - same round-trip, no <code>player</code> pre-resolved - use this when you need <code>players[name_to_id["Name"]]</code> yourself (e.g. two characters at once) or nothing character-specific at all (e.g. listing everyone online). Both return whatever that code string sets <code>output</code> to, over there.</li>
 			</ul>
 			<p>Everything here runs with full server privileges and no undo - there's no confirmation step. Give/spawn snippets are for a private single-player server; there's no anti-cheat concern here, just be sure of the character name before hitting Execute.</p>
 		</div>
@@ -51,9 +64,24 @@
 			letter-spacing: 1px; /* more readable */
 			margin-bottom: 10px;
 		}
+		.CodeMirror-hints{
+			font-family: Pixel;
+			font-size: 16px;
+			z-index: 500; /* above the editor's own gutters/scrollbars */
+		}
 	</style>
 	<script>
-		var editor=CodeMirror($("#code")[0],{lineNumbers:true,mode:"javascript",value:"var user=await get_user(req);\nvar domain=await get_domain(req);\n"});
+		// [private fork] Tab-completion (Ctrl-Space, or auto on ".") - see
+		// the libraries block above for the addon files. javascript-hint's
+		// completion source is CodeMirror's stock one: it looks at the
+		// actual live global object (here, the eval'd code's own scope -
+		// window in the browser sandbox this runs in) and the token's local
+		// vars, so suggestions reflect what's really there instead of a
+		// hand-maintained, driftable list.
+		var editor=CodeMirror($("#code")[0],{lineNumbers:true,mode:"javascript",value:"var user=await get_user(req);\nvar domain=await get_domain(req);\n",extraKeys:{"Ctrl-Space":"autocomplete"}});
+		editor.on("inputRead",function(cm,change){
+			if(change.text[0]===".") cm.showHint({completeSingle:false});
+		});
 		function execute()
 		{
 			api_call('execute',{code:editor.getValue()}).then(function(r){
@@ -73,13 +101,14 @@
 			});
 		}
 		var SNIPPETS={
-			give_gold:"var player = players[name_to_id['CharacterName']];\nif (player) { player.gold += 100000; }\noutput = player ? player.gold : 'not online';",
-			give_xp:"var player = players[name_to_id['CharacterName']];\nif (player) { player.xp += 100000; }\noutput = player ? player.xp : 'not online';",
-			give_item:"var player = players[name_to_id['CharacterName']];\nif (player) { add_item(player, { name: 'hpot1' }, { q: 100 }); }\noutput = player ? 'given' : 'not online';",
-			teleport:"var player = players[name_to_id['CharacterName']];\nif (player) { transport_player_to(player, 'main'); }\noutput = player ? 'teleported' : 'not online';",
-			spawn_monster:"var player = players[name_to_id['CharacterName']];\nif (player) {\n  var packs = (G.maps[instances[player.in].map].monsters || []);\n  var pack = packs.find(function(m){ return m.type === 'goo'; }) || packs[0];\n  if (pack) {\n    var def = Object.assign({}, pack, { stype: 'fixed', boundary: [player.x - 50, player.y - 50, player.x + 50, player.y + 50] });\n    new_monster(player.in, def);\n  }\n}\noutput = player ? 'spawned' : 'not online';",
-			list_online:"output = Object.keys(name_to_id).join(', ') || 'nobody online';",
-			mluck_now:"var player = players[name_to_id['CharacterName']];\nvar target = players[name_to_id['TargetCharacterName']];\nif (player && target) { target.s = target.s || {}; target.s.mluck = { ms: G.conditions.mluck.duration, f: player.name, strong: true }; }\noutput = (player && target) ? 'mluck applied' : 'one or both not online';",
+			give_gold:"output = await bots.local_eval('CharacterName', \"player.gold += 100000; output = player.gold;\") || 'not online';",
+			give_xp:"output = await bots.local_eval('CharacterName', \"player.xp += 100000; output = player.xp;\") || 'not online';",
+			give_item:"output = await bots.local_eval('CharacterName', \"add_item(player, { name: 'hpot1' }, { q: 100 }); output = 'given';\") || 'not online';",
+			teleport:"output = await bots.local_eval('CharacterName', \"transport_player_to(player, 'main'); output = 'teleported';\") || 'not online';",
+			spawn_monster:"output = await bots.local_eval('CharacterName', \"var packs = (G.maps[instances[player.in].map].monsters || []); var pack = packs.find(function(m){ return m.type === 'goo'; }) || packs[0]; if (pack) { var def = Object.assign({}, pack, { stype: 'fixed', boundary: [player.x - 50, player.y - 50, player.x + 50, player.y + 50] }); new_monster(player.in, def); } output = 'spawned';\") || 'not online';",
+			list_online:"output = await bots.raw_eval(\"output = Object.keys(name_to_id).join(', ') || 'nobody online';\");",
+			mluck_now:"output = await bots.raw_eval(\"var player = players[name_to_id['CharacterName']]; var target = players[name_to_id['TargetCharacterName']]; if (player && target) { target.s = target.s || {}; target.s.mluck = { ms: G.conditions.mluck.duration, f: player.name, strong: true }; } output = (player && target) ? 'mluck applied' : 'one or both not online';\");",
+			unlock_bank:"// note: lowercase stored name here, not the display name (matches the \"character\" collection)\nvar name = 'charactername';\nvar character = await db.collection('character').findOne({ name: name });\nif (!character) {\n  output = 'no such character';\n} else {\n  var doc = await db.collection('user').findOne({ _id: character.owner });\n  var set = {};\n  for (var i = 0; i < 48; i++) { var key = 'items' + i; if (!doc.info[key]) set['info.' + key] = []; }\n  if (Object.keys(set).length) await db.collection('user').updateOne({ _id: character.owner }, { $set: set });\n  output = 'unlocked ' + Object.keys(set).length + ' new bank page(s) for ' + name;\n}",
 		};
 		$("#snippet-picker").on("change",function(){
 			var key=this.value;

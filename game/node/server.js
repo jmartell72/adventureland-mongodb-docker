@@ -1334,13 +1334,18 @@ function calculate_player_stats(player) {
 		player.slots = {};
 	}
 	// players.citems[27]=null; //- to reproduce the bug
-	while (player.items.length > 42 && !player.items[player.items.length - 1]) {
+	// [private fork] Inventory size is settings-driven (default 42, vanilla
+	// value) instead of hardcoded - the client already sizes its inventory
+	// grid from character.isize (see js/html.js), so this is a one-line
+	// change, not a UI patch.
+	var inventory_size = settings.get().inventory_size || 42;
+	while (player.items.length > inventory_size && !player.items[player.items.length - 1]) {
 		player.items.splice(player.items.length - 1);
 	}
-	while (player.citems.length > 42 && !player.citems[player.citems.length - 1]) {
+	while (player.citems.length > inventory_size && !player.citems[player.citems.length - 1]) {
 		player.citems.splice(player.citems.length - 1);
 	}
-	player.isize = 42;
+	player.isize = inventory_size;
 	player.sets = {};
 	player.esize = player.isize - player.items.length;
 	player.xpm = player.goldm = player.luckm = 1;
@@ -5802,6 +5807,35 @@ function init_socket_io(socket_server) {
 				transport_player_to(player, data.to, s);
 				return success_response();
 			}
+		});
+		// [private fork] Personal fast travel - same destinations the
+		// in-world Transporter NPC (Alia, G.npcs.transporter.places) offers,
+		// without needing to walk to her. The "transport" handler above
+		// gates on distance/doors/locks because in a game with other
+		// players and an economy that gating matters; solo, there's nothing
+		// to protect, so this calls the same authoritative
+		// transport_player_to() directly instead of faking "transport"
+		// event data to slip past checks meant for something else. Bound to
+		// socket.id like every handler here, so it can only ever move the
+		// caller's own character. decay_s kept for parity with a real
+		// transport (traveling mildly decays buff durations either way).
+		socket.on("fast_travel", function (data) {
+			var player = players[socket.id];
+			if (!player) {
+				return;
+			}
+			if (!can_walk(player) || player.map == "jail") {
+				return fail_response("transport_failed");
+			}
+			if (player.s.dampened) {
+				return fail_response("transport_cant_dampened");
+			}
+			if (!Object.prototype.hasOwnProperty.call(G.npcs.transporter.places, data.to) || !instances[data.to] || !instances[data.to].allow) {
+				return fail_response("cant_enter");
+			}
+			decay_s(player, 5200);
+			transport_player_to(player, data.to);
+			return success_response();
 		});
 		socket.on("enter", function (data) {
 			var player = players[socket.id];
