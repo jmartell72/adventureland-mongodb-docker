@@ -300,6 +300,21 @@ try {
 
 // ==================== ROUTES ====================
 
+// [private fork] Event timer HUD data - public, read-only, same-origin (so
+// game/js/event_hud.js can just fetch() this with no CORS setup). Reads the
+// game server's own event/schedule state, which it saves to its Server doc
+// roughly every 15s (see node/server.js's server_loop) - not truly live,
+// but plenty fresh for a "next event in" style display.
+app.get("/events_status", async (req, res) => {
+	var server = await db.collection("server").findOne({}, { projection: { "info.events": 1, "info.event_schedule": 1 } });
+	res.set("Cache-Control", "no-store");
+	res.json({
+		events: (server && server.info && server.info.events) || {},
+		schedule: (server && server.info && server.info.event_schedule) || {},
+		now: Date.now(),
+	});
+});
+
 // Main page / Selection
 app.get("/", async (req, res, next) => {
 	var user = await get_user(req),

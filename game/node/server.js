@@ -15910,6 +15910,12 @@ async function server_loop() {
 			Server.info.observers = Object.keys(observers).length;
 			Server.info.merchants = total_merchants;
 			Server.info.total_players = total_players;
+			// [private fork] event timer HUD (main.js's /events_status route
+			// reads this) - piggybacks on the existing ~15s Mongo sync
+			// instead of a separate endpoint, so the client-facing route
+			// stays same-origin (web backend) with no CORS setup needed.
+			Server.info.events = events;
+			Server.info.event_schedule = E.schedule;
 			await save(Server);
 		} else if (server.started && !server.live && !server.stopped) {
 			Server.online = false;
