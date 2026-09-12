@@ -2077,10 +2077,18 @@ var last_hint = undefined;
 // addon files), which reflects the real live `window` global and the
 // token's local vars - suggestions match what's actually there rather than
 // a hand-maintained, driftable list.
+// VS Code-style: suggestions pop up continuously as you type any identifier
+// character (not just after "."), not only on an explicit Ctrl-Space. Skips
+// re-triggering while a completion popup is already open (cm.state.
+// completionActive) so it doesn't fight the user navigating the existing
+// list, and ignores non-identifier input (whitespace, punctuation) so it
+// doesn't fire on every keystroke.
 function enable_autocomplete(editor) {
 	editor.setOption("extraKeys", Object.assign({}, editor.getOption("extraKeys") || {}, { "Ctrl-Space": "autocomplete" }));
 	editor.on("inputRead", function (cm, change) {
-		if (change.text[0] === ".") cm.showHint({ completeSingle: false });
+		if (cm.state.completionActive) return;
+		if (!/[\w.$]/.test(change.text.join(""))) return;
+		cm.showHint({ completeSingle: false });
 	});
 }
 

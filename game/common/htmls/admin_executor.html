@@ -71,16 +71,19 @@
 		}
 	</style>
 	<script>
-		// [private fork] Tab-completion (Ctrl-Space, or auto on ".") - see
-		// the libraries block above for the addon files. javascript-hint's
+		// [private fork] VS Code-style continuous tab-completion - see the
+		// libraries block above for the addon files. javascript-hint's
 		// completion source is CodeMirror's stock one: it looks at the
 		// actual live global object (here, the eval'd code's own scope -
 		// window in the browser sandbox this runs in) and the token's local
 		// vars, so suggestions reflect what's really there instead of a
-		// hand-maintained, driftable list.
+		// hand-maintained, driftable list. Pops up as you type any
+		// identifier character, not just after "." or on Ctrl-Space.
 		var editor=CodeMirror($("#code")[0],{lineNumbers:true,mode:"javascript",value:"var user=await get_user(req);\nvar domain=await get_domain(req);\n",extraKeys:{"Ctrl-Space":"autocomplete"}});
 		editor.on("inputRead",function(cm,change){
-			if(change.text[0]===".") cm.showHint({completeSingle:false});
+			if(cm.state.completionActive) return;
+			if(!/[\w.$]/.test(change.text.join(""))) return;
+			cm.showHint({completeSingle:false});
 		});
 		function execute()
 		{
