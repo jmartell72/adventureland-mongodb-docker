@@ -18,6 +18,23 @@ WORKDIR /app
 RUN git clone https://github.com/kaansoral/adventureland_mongodb.git . \
     && git checkout "$ADVENTURELAND_REF"
 
+# Private self-hosted server patches: this game ships two account-penalty
+# systems (recurring "debuff" conditions) that only make sense for the
+# official commercial release and actively hurt a private instance:
+#   - drm_check: gates a Steam/Mac-App-Store ownership check; without that
+#     integration configured, it permanently applies "Authorization
+#     Failure" (-85% gold/luck, -20% xp) to every character.
+#   - email verification: "Not Verified" (-25% gold/luck) never clears
+#     because sending the verification email requires SES keys this
+#     deployment doesn't have configured.
+# Re-applied on every build since the repo is freshly cloned each time; the
+# grep after each sed fails the build loudly if upstream ever changes these
+# lines, instead of silently shipping an unpatched image.
+RUN sed -i 's/drm_check: 1,/drm_check: 0,/' node/server.js \
+    && grep -q 'drm_check: 0,' node/server.js \
+    && sed -i 's/everification: random_string(12),/everification: random_string(12),\n\t\t\t\t\tverified: true,/' api.js \
+    && grep -q 'verified: true,' api.js
+
 # Shared engine, symlinked as ./common in the upstream dev setup — here it's
 # just a real directory in the same spot, which the app code reads from.
 RUN git clone https://github.com/kaansoral/common_engine.git common \
