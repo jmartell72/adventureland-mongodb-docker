@@ -64,11 +64,11 @@ async function sync_file(db, filename) {
 }
 
 function start(db) {
-	if (!fs.existsSync(SCRIPTS_DIR)) {
-		console.log("[script_sync] " + SCRIPTS_DIR + " not mounted - dormant");
-		return;
-	}
+	// Checked every tick, not once at boot - the mount can appear after
+	// this process started (e.g. the volume was added and the directory
+	// created later, without a fresh container restart in between).
 	setInterval(function () {
+		if (!fs.existsSync(SCRIPTS_DIR)) return;
 		list_script_files().forEach(function (filename) {
 			var full_path = path.join(SCRIPTS_DIR, filename);
 			var mtime;
