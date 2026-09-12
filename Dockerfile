@@ -20,6 +20,17 @@ WORKDIR /app
 
 COPY game/ ./
 
+# [private fork] Every client asset is served as /js/foo.js?v={{domain.v}},
+# where domain.v comes from version.js's Version - the intended cache-buster
+# on every deploy. Upstream only auto-increments it when Local (main.js's
+# own dev-mode file-rewrite), which is never true in this container, so a
+# committed, unchanging Version number meant every deploy after the first
+# was invisible to already-cached browsers (a real bug this hit: shipped
+# tab-completion, browser kept serving pre-tab-completion functions.js).
+# Stamp a real build-time value here instead of relying on anyone to
+# remember to bump the committed one.
+RUN sed -i "s/^Version = .*/Version = $(date +%s);/" version.js
+
 # Stash a pristine copy of secretsandconfig: in production it's bind-mounted
 # to a persistent host directory (shadowing this build-time copy), so
 # entrypoint.sh seeds it from here on first boot. Keys you add by hand there

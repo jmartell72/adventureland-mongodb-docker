@@ -11198,12 +11198,21 @@ function init_socket_io(socket_server) {
 				} // part of the new restriction system [02/05/19]
 			}
 
-			if (mode.drm_check) {
-				if (player.drm && !player.auth_id) {
-					player.s.authfail = { ms: 900000 * 1000 };
-				} else if (player.s.authfail) {
-					player.s.authfail = { ms: 100 };
-				}
+			// [private fork] The clear branch (else if) must run whenever the
+			// grant condition doesn't hold, drm_check on or off - it used to
+			// be nested inside `if (mode.drm_check)`, so turning drm_check
+			// off (no Steam/MAS integration on this self-hosted instance)
+			// also disabled the ONLY code that clears an already-applied
+			// authfail debuff. Any character that picked it up before this
+			// fix (or from imported data) was stuck with it forever, since
+			// debuffs are exempt from decay_s()'s normal buff decay and
+			// authfail's own duration is ~28 years. This runs on every
+			// login, so it self-heals on next connect - no DB migration
+			// needed.
+			if (mode.drm_check && player.drm && !player.auth_id) {
+				player.s.authfail = { ms: 900000 * 1000 };
+			} else if (player.s.authfail) {
+				player.s.authfail = { ms: 100 };
 			}
 
 			if (!is_player_allowed(player)) {
