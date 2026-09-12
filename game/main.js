@@ -122,6 +122,13 @@ function admin_panel_html(s, saved) {
 			<div class="hint">Takes effect immediately, no restart.</div>
 		</fieldset>
 		<fieldset>
+			<legend>Ambient monster difficulty</legend>
+			<label>Respawn speed multiplier<input type="number" step="0.1" min="0.05" name="monster_respawn_multiplier" value="${esc(s.monster_respawn_multiplier)}"></label>
+			<div class="hint">Below 1 = monsters respawn faster (more effective density with one player). Above 1 = slower.</div>
+			<label>Aggro multiplier<input type="number" step="0.1" min="0" max="10" name="monster_aggro_multiplier" value="${esc(s.monster_aggro_multiplier)}"></label>
+			<div class="hint">Scales how often monsters attack on sight. Doesn't affect the scheduled event bosses. New spawns only, no restart.</div>
+		</fieldset>
+		<fieldset>
 			<legend>Discord relay</legend>
 			<label>Bot token<input type="text" name="discord_token" value="${esc(s.discord_token)}" placeholder="leave blank to stay dormant"></label>
 			<label>Chat channel ID<input type="text" name="discord_chat_channel" value="${esc(s.discord_chat_channel)}"></label>
@@ -154,6 +161,8 @@ app.post("/admin/panel/save", async (req, res) => {
 		luck_multiplier: num(body.luck_multiplier, current.luck_multiplier),
 		character_limit: Math.max(1, Math.round(num(body.character_limit, current.character_limit))),
 		ip_limit: Math.max(1, Math.round(num(body.ip_limit, current.ip_limit))),
+		monster_respawn_multiplier: Math.max(0.05, num(body.monster_respawn_multiplier, current.monster_respawn_multiplier)),
+		monster_aggro_multiplier: Math.max(0, num(body.monster_aggro_multiplier, current.monster_aggro_multiplier)),
 		discord_token: "" + (body.discord_token || ""),
 		discord_chat_channel: "" + (body.discord_chat_channel || ""),
 	});

@@ -16,6 +16,13 @@ var DEFAULTS = {
 	ip_limit: 20,
 	discord_token: "",
 	discord_chat_channel: "",
+	// Ambient monster difficulty. Lower respawn_multiplier = monsters come back
+	// faster (higher effective density with one player); lower
+	// aggro_multiplier = fewer monsters attack on sight. Never applied to the
+	// hand-tuned event bosses (Goo Brawl etc.) - those are fixed stats in
+	// design/monsters.js, not scaled here.
+	monster_respawn_multiplier: 1,
+	monster_aggro_multiplier: 1,
 	bots: {}, // { "CharacterName": { enabled: false, behavior: "farm", map: "main" } } — reserved for the bot runner
 };
 

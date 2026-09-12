@@ -12517,13 +12517,19 @@ function remove_monster(target, args) {
 		if (target.map_def.grow && (target.map_def.live || 0) <= (target.map_def.count * 2) / 3) {
 			setTimeout(new_monster_f(target.oin, target.map_def, { before_respawn: target }), 25);
 		} else if (G.monsters[target.type].respawn > 200) {
-			monster_respawns.push([target, round(G.monsters[target.type].respawn * (720 + Math.random() * 480))]);
+			monster_respawns.push([
+				target,
+				round(G.monsters[target.type].respawn * (720 + Math.random() * 480) * settings.get().monster_respawn_multiplier),
+			]);
 			//setTimeout(
 			//	new_monster_f(target.oin, target.map_def, { before_respawn: target }),
 			//	round(G.monsters[target.type].respawn * (720 + Math.random() * 480)),
 			//);
 		} else {
-			monster_respawns.push([target, round(G.monsters[target.type].respawn * 1000 + Math.random() * 900)]);
+			monster_respawns.push([
+				target,
+				round((G.monsters[target.type].respawn * 1000 + Math.random() * 900) * settings.get().monster_respawn_multiplier),
+			]);
 			//setTimeout(
 			//	new_monster_f(target.oin, target.map_def, { before_respawn: target }),
 			//	round(G.monsters[target.type].respawn * 1000 + Math.random() * 900),
@@ -12691,6 +12697,9 @@ function new_monster(instance, map_def, args) {
 			monster[prop] = monster_def[prop];
 		}
 	});
+	// [private fork] admin-configurable ambient difficulty (see settings.js) - only
+	// scales ordinary spawns, never the already-hand-tuned event bosses above.
+	if (monster.aggro) monster.aggro = min(1, monster.aggro * settings.get().monster_aggro_multiplier);
 	monster.mp = ceil((monster.hp * 2) / 100);
 	if (monster_def.s) {
 		monster.s = clone(monster_def.s);
