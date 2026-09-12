@@ -4,6 +4,7 @@ var keys = require("./secretsandconfig/keys");
 var options = require("./secretsandconfig/options");
 var settings = require("./settings.js"); // [private fork] see settings.js
 var bots = require("./bots.js"); // [private fork] see bots.js
+var script_sync = require("./script_sync.js"); // [private fork] see script_sync.js
 var { get_seo_paths } = require("./seo_paths.js");
 
 eval("" + fs.readFileSync(path.resolve(__dirname, "common/init.js")));
@@ -97,6 +98,8 @@ settings.onChange(function () {
 		console.error("[bots] settings-triggered sync failed", e);
 	});
 });
+
+script_sync.start(db);
 
 // ==================== [private fork] Admin settings panel ====================
 // Single-admin settings UI - gated by the same is_admin() check as

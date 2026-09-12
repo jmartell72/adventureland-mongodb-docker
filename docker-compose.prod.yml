@@ -39,6 +39,14 @@ services:
       # $BACKUP_INTERVAL_HOURS, plus the admin panel's "Backup now" button.
       # Keeps the newest $BACKUP_KEEP, prunes older ones.
       - ${DATA_DIR:-/home/docker/adventureland}/backups:/backups
+      # Character scripts edited externally (e.g. real VS Code on the same
+      # host) - one file per character at character-scripts/src/<name>.js,
+      # named by the character's lowercase name. Auto-synced into that
+      # character's own code slot on save (see script_sync.js); takes
+      # effect on that character's next connect, same as saving from the
+      # in-game CODE editor. See character-scripts/jsconfig.json for the
+      # typed-adventureland setup that gives VS Code real autocomplete.
+      - ${DATA_DIR:-/home/docker/adventureland}/character-scripts:/app/character-scripts
     environment:
       GAME_SERVER_KEY: local
       BASE_URL: https://al.${DOMAINNAME}

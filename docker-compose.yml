@@ -15,6 +15,7 @@ services:
     volumes:
       - mongo-data:/data/db
       - backups:/backups
+      - ./character-scripts:/app/character-scripts
     ports:
       - "8090:8090"
       - "7192:7192"
