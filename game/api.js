@@ -74,8 +74,9 @@ function get_referrer(req, ip) {
 async function signup_or_login_api(args) {
 	var domain = await get_domain(args.req),
 		email = args.email,
+		username = args.username && ("" + args.username).toLowerCase().trim(),
 		password = args.password,
-		existing = await get_user_by_email(email);
+		existing = username ? await get_user_by_username(username) : await get_user_by_email(email);
 
 	if (existing && existing.server && msince(existing.last_online) < 15 && msince(gf(existing, "last_auth", really_old)) < 15) return { failed: true, reason: "cant_login_inside_bank" };
 
@@ -105,7 +106,7 @@ async function signup_or_login_api(args) {
 		return { failed: true, reason: "wrong_password" };
 	}
 
-	if (!email) return { failed: true, reason: "no_email" };
+	if (!email && !username) return { failed: true, reason: "no_identifier" };
 	if (args.only_login) return { failed: true, reason: "email_not_found" };
 	if (args.only_signup && existing) return { failed: true, reason: "already_signed_up" };
 
@@ -117,7 +118,11 @@ async function signup_or_login_api(args) {
 
 	var R = await tx(
 		async () => {
-			if (await tx_get("MK_email-" + A.email)) ex("email_exists");
+			if (A.username) {
+				if (await tx_get("MK_username-" + A.username)) ex("username_exists");
+			} else {
+				if (await tx_get("MK_email-" + A.email)) ex("email_exists");
+			}
 			var salt = random_string(20);
 			var hpassword = hash_password(A.password, salt);
 			R.user = {
@@ -126,7 +131,8 @@ async function signup_or_login_api(args) {
 				updated: new Date(),
 				a_rand: a_rand("user"),
 				name: "#" + A.signupth,
-				email: [A.email],
+				email: A.email ? [A.email] : [],
+				username: A.username || "",
 				password: hpassword,
 				credits: 0,
 				banned: false,
@@ -154,25 +160,39 @@ async function signup_or_login_api(args) {
 					slots: A.slots,
 					ip: A.ip,
 					country: A.country,
-					email: A.email,
+					email: A.email || "",
+					username: A.username || "",
 					signupth: A.signupth,
 				},
 				blobs: ["info"],
 			};
 			R.auth = get_new_auth(R.user);
 			await tx_save(R.user);
-			await tx_save({ _id: "MK_email-" + A.email, type: "email", phrase: A.email, owner: get_id(R.user), created: new Date() });
+			if (A.username) {
+				await tx_save({ _id: "MK_username-" + A.username, type: "username", phrase: A.username, owner: get_id(R.user), created: new Date() });
+			} else {
+				await tx_save({ _id: "MK_email-" + A.email, type: "email", phrase: A.email, owner: get_id(R.user), created: new Date() });
+			}
 		},
-		{ email: email, password: password, signupth: signupth, referrer: referrer, slots: domain.electron || domain.tauri ? 8 : 5, ip: get_ip(args.req), country: get_country(args.req) },
+		{
+			email: email,
+			username: username,
+			password: password,
+			signupth: signupth,
+			referrer: referrer,
+			slots: domain.electron || domain.tauri ? 8 : 5,
+			ip: get_ip(args.req),
+			country: get_country(args.req),
+		},
 	);
 
 	if (R.failed) return { failed: true, reason: R.reason };
 
 	set_cookie(args.res, options.cookie_key, get_id(R.user) + "-" + R.auth, domain.domain);
-	send_verification_email(domain, R.user);
+	if (R.user.info.email) send_verification_email(domain, R.user); // [private fork] no email for username-only accounts
 	args.res.infs.push({ type: "success", message: "Signup Complete!" });
 	args.res.infs.push(await selection_info(args.req, R.user, domain));
-	add_event(R.user, "signup", ["new", "noteworthy"], { req: args.req, info: { message: "Signup " + R.user.info.email } });
+	add_event(R.user, "signup", ["new", "noteworthy"], { req: args.req, info: { message: "Signup " + (R.user.info.email || R.user.info.username) } });
 	increase_signupth();
 
 	try {
@@ -1755,7 +1775,11 @@ var REF = {
 	signup_or_login: {
 		F: signup_or_login_api,
 		P: true,
-		email: { type: "email" },
+		// [private fork] email is now optional - username is an alternative
+		// identifier for this self-hosted instance, since there's no real
+		// email verification/reset flow configured anyway.
+		email: { type: "email", optional: true },
+		username: { type: "string", minimum: 3, maximum: 32, optional: true },
 		password: { type: "string", minimum: 1 },
 		only_login: { type: "boolean", optional: true },
 		only_signup: { type: "boolean", optional: true },

@@ -346,6 +346,11 @@ async function get_user_by_email(email) {
 	return await db.collection("user").findOne({ email: email });
 }
 
+// [private fork] username login - see signup_or_login_api in api.js
+async function get_user_by_username(username) {
+	return await db.collection("user").findOne({ username: username });
+}
+
 async function get_user_with_override(req, api_override, auth_override) {
 	var auth_str = auth_override || (req.cookies && req.cookies[options.cookie_key]);
 	if (!auth_str) return null;

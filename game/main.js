@@ -3,6 +3,7 @@ var fs = require("fs"),
 var keys = require("./secretsandconfig/keys");
 var options = require("./secretsandconfig/options");
 var settings = require("./settings.js"); // [private fork] see settings.js
+var bots = require("./bots.js"); // [private fork] see bots.js
 var { get_seo_paths } = require("./seo_paths.js");
 
 eval("" + fs.readFileSync(path.resolve(__dirname, "common/init.js")));
@@ -79,6 +80,24 @@ eval("" + fs.readFileSync(path.resolve(__dirname, "crons.js")));
 eval("" + fs.readFileSync(path.resolve(__dirname, "common/admin.js")));
 eval("" + fs.readFileSync(path.resolve(__dirname, "admin_dashboard.js")));
 
+// [private fork] Bot connectors - see bots.js. Character docs store the
+// name twice with different casing: the top-level "name" is a lowercase
+// index field (what settings.json's bot keys use), while "info.name" keeps
+// the original casing and is the actual key node/server.js's live
+// name_to_id map uses - the tick needs the latter.
+bots.start_ticking(async function (stored_name) {
+	var character = await db.collection("character").findOne({ name: stored_name }, { projection: { "info.name": 1 } });
+	return character && character.info && character.info.name;
+});
+bots.sync_with_settings(db).catch(function (e) {
+	console.error("[bots] initial sync failed", e);
+});
+settings.onChange(function () {
+	bots.sync_with_settings(db).catch(function (e) {
+		console.error("[bots] settings-triggered sync failed", e);
+	});
+});
+
 // ==================== [private fork] Admin settings panel ====================
 // Single-admin settings UI - gated by the same is_admin() check as
 // /admin/executor etc. Reads/writes settings.js, which persists to
@@ -105,7 +124,7 @@ function admin_list_backups() {
 	}
 }
 
-function admin_panel_html(s, saved, backup_status) {
+function admin_panel_html(s, saved, backup_status, characters) {
 	function esc(v) {
 		return ("" + v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
 	}
@@ -114,6 +133,7 @@ function admin_panel_html(s, saved, backup_status) {
 		return Math.round(bytes / 1024) + " KB";
 	}
 	var backups = admin_list_backups();
+	characters = characters || [];
 	return `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>Server Settings</title>
 <style>
@@ -163,6 +183,37 @@ function admin_panel_html(s, saved, backup_status) {
 	</form>
 	<p class="path">Also hand-editable at ${esc(settings.path)} - changes there are picked up automatically within a couple seconds.</p>
 
+	<form method="post" action="/admin/panel/bots">
+		<fieldset>
+			<legend>Bots (conservative AI: attacks nearby monsters up to character level + 3, disengages below 40% HP)</legend>
+			${
+				characters.length
+					? characters
+							.map(function (c) {
+								var enabled = !!(s.bots[c.name] && s.bots[c.name].enabled);
+								var live = bots.is_connected(c.name);
+								return (
+									'<label style="display:flex; align-items:center; gap:8px;">' +
+									'<input type="checkbox" name="bot_' +
+									esc(c.name) +
+									'" ' +
+									(enabled ? "checked" : "") +
+									">" +
+									esc(c.name) +
+									" (Lv." +
+									esc(c.level || 1) +
+									")" +
+									(enabled ? (live ? ' <span style="color:#7d7">connected</span>' : ' <span style="color:#dd7">connecting…</span>') : "") +
+									"</label>"
+								);
+							})
+							.join("")
+					: '<div class="hint">No characters on this account yet.</div>'
+			}
+			<button type="submit" style="margin-top:12px">Save bots</button>
+		</fieldset>
+	</form>
+
 	<fieldset>
 		<legend>World data backups</legend>
 		${backup_status ? `<div class="saved">${esc(backup_status)}</div>` : ""}
@@ -188,7 +239,21 @@ app.get("/admin/panel", async (req, res) => {
 	var user = await get_user(req);
 	if (!is_admin(user)) return res.status(403).send("Forbidden");
 	var backup_status = req.query.backup === "1" ? "Backup started." : req.query.backup === "0" ? "Backup failed - check container logs." : "";
-	res.send(admin_panel_html(settings.get(), req.query.saved === "1", backup_status));
+	var characters = await db.collection("character").find({}, { projection: { name: 1, level: 1 } }).toArray();
+	res.send(admin_panel_html(settings.get(), req.query.saved === "1", backup_status, characters));
+});
+
+app.post("/admin/panel/bots", async (req, res) => {
+	var user = await get_user(req);
+	if (!is_admin(user)) return res.status(403).send("Forbidden");
+	var body = req.body || {};
+	var characters = await db.collection("character").find({}, { projection: { name: 1 } }).toArray();
+	var bots_config = {};
+	characters.forEach(function (c) {
+		bots_config[c.name] = { enabled: !!body["bot_" + c.name] };
+	});
+	settings.update({ bots: bots_config });
+	res.redirect("/admin/panel");
 });
 
 app.post("/admin/panel/backup", async (req, res) => {
