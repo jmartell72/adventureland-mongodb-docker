@@ -13,7 +13,7 @@ RUN apt-get update \
     && echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/debian bookworm/mongodb-org/7.0 main" \
         > /etc/apt/sources.list.d/mongodb-org-7.0.list \
     && apt-get update \
-    && apt-get install -y --no-install-recommends mongodb-org \
+    && apt-get install -y --no-install-recommends mongodb-org mongodb-database-tools \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -29,11 +29,12 @@ RUN cp -a secretsandconfig .secretsandconfig-template
 RUN npm install --omit=dev \
     && cd node && npm install --omit=dev
 
-RUN mkdir -p /data/db
+RUN mkdir -p /data/db /backups
 
 COPY scripts/entrypoint.sh /app/entrypoint.sh
+COPY scripts/backup.sh /app/scripts/backup.sh
 COPY scripts/patch-config.js /app/scripts/patch-config.js
-RUN chmod +x /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh /app/scripts/backup.sh
 
 ENV NODE_ENV=production \
     MONGODB_URI=mongodb://127.0.0.1:27017/adventureland?replicaSet=rs0 \

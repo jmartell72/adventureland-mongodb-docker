@@ -35,11 +35,17 @@ services:
       # etc.) — seeded from the image on first boot, then persists across
       # restarts and rebuilds. See scripts/entrypoint.sh and patch-config.js.
       - ${DATA_DIR:-/home/docker/adventureland}/secretsandconfig:/app/secretsandconfig
+      # World-data backups (mongodump, gzip'd, timestamped) - scheduled every
+      # $BACKUP_INTERVAL_HOURS, plus the admin panel's "Backup now" button.
+      # Keeps the newest $BACKUP_KEEP, prunes older ones.
+      - ${DATA_DIR:-/home/docker/adventureland}/backups:/backups
     environment:
       GAME_SERVER_KEY: local
       BASE_URL: https://al.${DOMAINNAME}
       GAME_SERVER_ADDRESS: al-ws.${DOMAINNAME}
       PUBLIC_SECURE: "true"
+      BACKUP_INTERVAL_HOURS: ${BACKUP_INTERVAL_HOURS:-6}
+      BACKUP_KEEP: ${BACKUP_KEEP:-14}
     labels:
       - "traefik.enable=true"
       ## --- Web backend (Express, port 8090) ---

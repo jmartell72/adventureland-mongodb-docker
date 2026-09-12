@@ -38,11 +38,24 @@ MAIN_PID=$!
 node node/server.js "${GAME_SERVER_KEY:-local}" &
 GAME_PID=$!
 
+# Scheduled world-data backups (accounts, characters, map data - everything)
+# to /backups (bind-mount that to a host directory in production). See
+# scripts/backup.sh for the actual mongodump + pruning; the admin panel's
+# "Backup now" button runs the same script on demand.
+(
+	while true; do
+		sleep "$(( ${BACKUP_INTERVAL_HOURS:-6} * 3600 ))"
+		/app/scripts/backup.sh || echo "[entrypoint] scheduled backup failed"
+	done
+) &
+BACKUP_LOOP_PID=$!
+
 SHUTTING_DOWN=0
 term() {
 	if [ "$SHUTTING_DOWN" = "1" ]; then return 0; fi
 	SHUTTING_DOWN=1
 
+	kill -TERM "$BACKUP_LOOP_PID" 2>/dev/null || true
 	kill -TERM "$MAIN_PID" "$GAME_PID" 2>/dev/null || true
 	# node/server.js deregisters itself from MongoDB (sets online:false) as
 	# part of its own graceful shutdown sequence *after* being signaled -

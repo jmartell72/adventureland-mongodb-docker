@@ -13,9 +13,11 @@ services:
       GAME_SERVER_KEY: local
     volumes:
       - mongo-data:/data/db
+      - backups:/backups
     ports:
       - "8090:8090"
       - "7192:7192"
 
 volumes:
   mongo-data:
+  backups:

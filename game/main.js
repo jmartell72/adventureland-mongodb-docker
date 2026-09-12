@@ -85,10 +85,35 @@ eval("" + fs.readFileSync(path.resolve(__dirname, "admin_dashboard.js")));
 // secretsandconfig/settings.json (hand-editable, hot-reloaded, no restart
 // needed except where noted below).
 
-function admin_panel_html(s, saved) {
+function admin_list_backups() {
+	var dir = "/backups";
+	try {
+		return fs
+			.readdirSync(dir)
+			.filter(function (f) {
+				return f.endsWith(".archive.gz");
+			})
+			.map(function (f) {
+				var stat = fs.statSync(path.join(dir, f));
+				return { name: f, size: stat.size, mtime: stat.mtime };
+			})
+			.sort(function (a, b) {
+				return b.mtime - a.mtime;
+			});
+	} catch (e) {
+		return [];
+	}
+}
+
+function admin_panel_html(s, saved, backup_status) {
 	function esc(v) {
 		return ("" + v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
 	}
+	function human_size(bytes) {
+		if (bytes > 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + " MB";
+		return Math.round(bytes / 1024) + " KB";
+	}
+	var backups = admin_list_backups();
 	return `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>Server Settings</title>
 <style>
@@ -137,13 +162,45 @@ function admin_panel_html(s, saved) {
 		<button type="submit">Save</button>
 	</form>
 	<p class="path">Also hand-editable at ${esc(settings.path)} - changes there are picked up automatically within a couple seconds.</p>
+
+	<fieldset>
+		<legend>World data backups</legend>
+		${backup_status ? `<div class="saved">${esc(backup_status)}</div>` : ""}
+		<div class="hint">Automatic backup every ${esc(process.env.BACKUP_INTERVAL_HOURS || 6)}h to /backups, keeping the newest ${esc(process.env.BACKUP_KEEP || 14)}. Safe to run on demand too.</div>
+		<form method="post" action="/admin/panel/backup"><button type="submit">Backup now</button></form>
+		${
+			backups.length
+				? "<ul>" +
+					backups
+						.slice(0, 10)
+						.map(function (b) {
+							return "<li>" + esc(b.name) + " — " + human_size(b.size) + " — " + esc(new Date(b.mtime).toISOString()) + "</li>";
+						})
+						.join("") +
+					"</ul>"
+				: '<div class="hint">No backups yet.</div>'
+		}
+	</fieldset>
 </body></html>`;
 }
 
 app.get("/admin/panel", async (req, res) => {
 	var user = await get_user(req);
 	if (!is_admin(user)) return res.status(403).send("Forbidden");
-	res.send(admin_panel_html(settings.get(), req.query.saved === "1"));
+	var backup_status = req.query.backup === "1" ? "Backup started." : req.query.backup === "0" ? "Backup failed - check container logs." : "";
+	res.send(admin_panel_html(settings.get(), req.query.saved === "1", backup_status));
+});
+
+app.post("/admin/panel/backup", async (req, res) => {
+	var user = await get_user(req);
+	if (!is_admin(user)) return res.status(403).send("Forbidden");
+	var { execFile } = require("child_process");
+	execFile("/app/scripts/backup.sh", function (err, stdout, stderr) {
+		if (err) console.error("[admin panel] backup failed", err, stderr);
+	});
+	// Don't block the response on the full dump - report "started" and let
+	// the backup list on the next page load reflect it once done.
+	res.redirect("/admin/panel?backup=1");
 });
 
 app.post("/admin/panel/save", async (req, res) => {
