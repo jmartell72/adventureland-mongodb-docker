@@ -62,6 +62,21 @@
 		}
 	}
 
+	async function set_manual_control(name, enabled) {
+		try {
+			var response = await fetch("/admin/party/manual", {
+				method: "POST",
+				headers: { "content-type": "application/x-www-form-urlencoded" },
+				credentials: "same-origin",
+				body: "character=" + encodeURIComponent(name) + "&enabled=" + (enabled ? "1" : "0") + "&json=1",
+			});
+			if (response.ok) add_log(name + (enabled ? " bot re-enabled" : " bot stopped - log in as them to take control"), "gray");
+			else add_log("Couldn't update " + name + "'s bot state", "gray");
+		} catch (e) {
+			add_log("Couldn't reach the server to update " + name, "gray");
+		}
+	}
+
 	window.party_context_menu = function (event, name) {
 		event.preventDefault();
 		var menu = ensure_element();
@@ -74,6 +89,21 @@
 		menu.appendChild(
 			option("Passive", function () {
 				set_combat_mode(name, "passive");
+			}),
+		);
+		menu.appendChild(
+			option("Take manual control (stop bot)", function () {
+				set_manual_control(name, false);
+			}),
+		);
+		menu.appendChild(
+			option("Re-enable bot", function () {
+				set_manual_control(name, true);
+			}),
+		);
+		menu.appendChild(
+			option("Open Party Command Center", function () {
+				if (typeof window.open_party_command_center === "function") window.open_party_command_center();
 			}),
 		);
 		menu.style.left = event.clientX + "px";

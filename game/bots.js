@@ -358,7 +358,28 @@ function build_ai_code(config, partner_display_name) {
 		lines.push(
 			"    if (!player.target || !pool[player.target]) { if (nearby[0]) player.target = nearby[0].id; }",
 			"    if (player.target && pool[player.target]) {",
-			"      try { player.socket.fs.skill({ name: 'attack', id: player.target }); } catch (e) {}",
+			// A target (especially one copied from a companion's partner) can
+			// easily be further away than the character's actual attack range
+			// (player.range, from equipped weapon/skills) - the server's own
+			// "attack" handler silently rejects an out-of-range attempt, which
+			// with no movement step at all reads as "the bot just stands there
+			// doing nothing." Close the distance first, same crude
+			// straight-line nudge as the companion-follow logic above, and
+			// only attack once actually in range.
+			"      var tgt = pool[player.target];",
+			"      var tdist = simple_distance(player, tgt);",
+			"      var range = (player.range || 100) - 10;",
+			"      if (tdist > range) {",
+			"        var tdx = tgt.x - player.x, tdy = tgt.y - player.y;",
+			"        var tstep = Math.min(150, tdist - range);",
+			"        if (tstep > 0) {",
+			"          player.x += (tdx / tdist) * tstep;",
+			"          player.y += (tdy / tdist) * tstep;",
+			"          player.going_x = player.x; player.going_y = player.y; player.moving = false;",
+			"        }",
+			"      } else {",
+			"        try { player.socket.fs.skill({ name: 'attack', id: player.target }); } catch (e) {}",
+			"      }",
 			"    }",
 			"  }",
 		);

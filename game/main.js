@@ -495,38 +495,78 @@ app.get("/admin/party", async (req, res) => {
 
 app.post("/admin/party/manual", async (req, res) => {
 	var user = await get_user(req);
-	if (!is_admin(user)) return res.status(403).send("Forbidden");
+	if (!is_admin(user)) return res.status(403).send(req.body && req.body.json === "1" ? { failed: true, reason: "forbidden" } : "Forbidden");
 	var body = req.body || {};
 	var name = String(body.character || "").toLowerCase();
 	var enabled = body.enabled === "1";
-	if (!name) return res.redirect("/admin/party");
+	if (!name) return body.json === "1" ? res.status(400).send({ failed: true, reason: "invalid_character" }) : res.redirect("/admin/party");
 	var bots_config = Object.assign({}, settings.get().bots || {});
 	bots_config[name] = Object.assign({ mode: "idle" }, bots_config[name], { enabled: enabled });
 	settings.update({ bots: bots_config });
+	if (body.json === "1") return res.send({ ok: true, enabled: enabled });
 	res.redirect("/admin/party");
 });
 
 app.post("/admin/party/transfer", async (req, res) => {
 	var user = await get_user(req);
-	if (!is_admin(user)) return res.status(403).send("Forbidden");
+	if (!is_admin(user)) return res.status(403).send(req.body && req.body.json === "1" ? { failed: true, reason: "forbidden" } : "Forbidden");
 	var body = req.body || {};
+	var json = body.json === "1";
 	var from_name = String(body.from || "").toLowerCase();
 	var to_name = String(body.to || "").toLowerCase();
 	var index = parseInt(body.index, 10);
 	var quantity = parseInt(body.quantity, 10) || null;
-	if (!from_name || !to_name || !Number.isFinite(index)) return res.redirect("/admin/party?transfer=invalid_request");
-	if (!bots.is_connected(from_name) || !bots.is_connected(to_name)) return res.redirect("/admin/party?transfer=not_connected");
+	function fail(reason) {
+		return json ? res.status(400).send({ failed: true, reason: reason }) : res.redirect("/admin/party?transfer=" + encodeURIComponent(reason));
+	}
+	if (!from_name || !to_name || !Number.isFinite(index)) return fail("invalid_request");
+	if (!bots.is_connected(from_name) || !bots.is_connected(to_name)) return fail("not_connected");
 	var from_character = await db.collection("character").findOne({ name: from_name }, { projection: { "info.name": 1 } });
 	var to_character = await db.collection("character").findOne({ name: to_name }, { projection: { "info.name": 1 } });
-	if (!from_character || !to_character) return res.redirect("/admin/party?transfer=unknown_character");
+	if (!from_character || !to_character) return fail("unknown_character");
 	try {
 		var result = await bots.transfer_item(from_character.info.name, index, to_character.info.name, quantity);
-		if (result && result.ok) return res.redirect("/admin/party?transfer=ok");
-		return res.redirect("/admin/party?transfer=" + encodeURIComponent((result && result.reason) || "unknown"));
+		if (result && result.ok) return json ? res.send({ ok: true }) : res.redirect("/admin/party?transfer=ok");
+		return fail((result && result.reason) || "unknown");
 	} catch (e) {
 		console.error("[party transfer] failed", e);
-		return res.redirect("/admin/party?transfer=exception");
+		return fail("exception");
 	}
+});
+
+// JSON version of the party command center's data, for the in-game overlay
+// panel (js/party_command_center.js) - same character query/shape as the
+// full /admin/party page, just without the HTML wrapper so it can be
+// fetched and re-rendered client-side without a page navigation.
+app.get("/admin/party/data", async (req, res) => {
+	var user = await get_user(req);
+	if (!is_admin(user)) return res.status(403).send({ failed: true, reason: "forbidden" });
+	var characters = await db
+		.collection("character")
+		.find({}, { projection: { name: 1, "info.name": 1, level: 1, xp: 1, type: 1, ctype: 1, items: 1, slots: 1 } })
+		.toArray();
+	var bots_config = settings.get().bots || {};
+	res.send({
+		characters: characters.map(function (c) {
+			var cfg = bots_config[c.name] || {};
+			var level = c.level || 1;
+			var max_xp = (typeof G !== "undefined" && G.levels && G.levels[level + ""]) || 0;
+			return {
+				name: c.name,
+				display_name: (c.info && c.info.name) || c.name,
+				ctype: c.type || c.ctype || "?",
+				level: level,
+				xp: c.xp || 0,
+				max_xp: max_xp,
+				items: Array.isArray(c.items) ? c.items : [],
+				slots: c.slots || {},
+				connected: bots.is_connected(c.name),
+				bot_enabled: !!cfg.enabled,
+				bot_mode: cfg.mode || "farm",
+			};
+		}),
+		slot_order: PARTY_EQUIP_SLOTS,
+	});
 });
 
 app.post("/admin/panel/backup", async (req, res) => {
