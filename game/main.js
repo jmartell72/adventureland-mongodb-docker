@@ -231,6 +231,13 @@ function admin_panel_html(s, saved, backup_status, characters) {
 									'>Merchant</option><option value="custom"' +
 									(mode === "custom" ? " selected" : "") +
 									">Custom</option></select></label>" +
+									'<label>Combat (companion mode)<br><select name="combat_' +
+									esc(c.name) +
+									'"><option value="assist"' +
+									(cfg.combat_mode !== "passive" ? " selected" : "") +
+									'>Attacking</option><option value="passive"' +
+									(cfg.combat_mode === "passive" ? " selected" : "") +
+									">Passive</option></select></label>" +
 									'<label>Farm-zone map<br><input type="text" name="map_' +
 									esc(c.name) +
 									'" value="' +
@@ -327,6 +334,7 @@ app.post("/admin/panel/bots", async (req, res) => {
 		bots_config[c.name] = {
 			enabled: !!body["bot_" + c.name],
 			mode: ["farm", "companion", "merchant", "custom"].indexOf(mode) !== -1 ? mode : "farm",
+			combat_mode: body["combat_" + c.name] === "passive" ? "passive" : "assist",
 			map: (body["map_" + c.name] || "").trim(),
 			party_with: body["party_" + c.name] || "",
 			auto_sell: !!body["autosell_" + c.name],
@@ -336,6 +344,25 @@ app.post("/admin/panel/bots", async (req, res) => {
 	});
 	settings.update({ bots: bots_config });
 	res.redirect("/admin/panel");
+});
+
+// Lightweight toggle for the in-game party right-click menu (js/functions.js
+// party_context_menu) - only touches combat_mode on an already-configured
+// bot, doesn't require the full admin panel form. Still admin-gated since
+// bots settings are admin-only everywhere else; fine on a single-player
+// server where the player is the admin.
+app.post("/admin/panel/bots/combat_mode", async (req, res) => {
+	var user = await get_user(req);
+	if (!is_admin(user)) return res.status(403).send({ failed: true, reason: "forbidden" });
+	var body = req.body || {};
+	var name = String(body.character || "").toLowerCase();
+	var combat_mode = body.combat_mode === "passive" ? "passive" : "assist";
+	if (!name) return res.status(400).send({ failed: true, reason: "invalid_character" });
+	var bots_config = Object.assign({}, settings.get().bots || {});
+	if (!bots_config[name]) return res.status(404).send({ failed: true, reason: "not_configured" });
+	bots_config[name] = Object.assign({}, bots_config[name], { combat_mode: combat_mode });
+	settings.update({ bots: bots_config });
+	res.send({ ok: true, combat_mode: combat_mode });
 });
 
 app.post("/admin/panel/backup", async (req, res) => {

@@ -297,31 +297,40 @@ function build_ai_code(config, partner_display_name) {
 			"  }",
 		);
 	}
-	lines.push(
-		"  var pool = (instances[player.in] && instances[player.in].monsters) || {};",
-		"  var nearby = Object.values(pool).filter(function(m){",
-		"    return m && !m.dead && simple_distance(player, m) < 320 && (m.level || 1) <= (player.level || 1) + 3;",
-		"  });",
-		"  nearby.sort(function(a, b){ return simple_distance(player, a) - simple_distance(player, b); });",
-		"  if (player.hp > player.max_hp * 0.4) {",
-	);
-	if (config && config.mode === "companion") {
-		// "partner" (declared above, in scope by var hoisting even if this
-		// exact tick's party-sync branch didn't run) is the leader here -
-		// copy their live target if it's a real, alive monster in this same
-		// instance, before falling back to picking one nearby ourselves.
+	// Passive companions (config.combat_mode === "passive") skip this whole
+	// block: they still follow/teleport via the movement branch above, but
+	// never pick a target or attack - for a companion you just want tagging
+	// along without dragging you into fights you didn't ask for.
+	var passive_companion = config && config.mode === "companion" && config.combat_mode === "passive";
+	if (!passive_companion) {
 		lines.push(
-			"    if (typeof partner !== 'undefined' && partner && partner.target && pool[partner.target] && !pool[partner.target].dead) {",
-			"      player.target = partner.target;",
+			"  var pool = (instances[player.in] && instances[player.in].monsters) || {};",
+			"  var nearby = Object.values(pool).filter(function(m){",
+			"    return m && !m.dead && simple_distance(player, m) < 320 && (m.level || 1) <= (player.level || 1) + 3;",
+			"  });",
+			"  nearby.sort(function(a, b){ return simple_distance(player, a) - simple_distance(player, b); });",
+			"  if (player.hp > player.max_hp * 0.4) {",
+		);
+		if (config && config.mode === "companion") {
+			// "partner" (declared above, in scope by var hoisting even if this
+			// exact tick's party-sync branch didn't run) is the leader here -
+			// copy their live target if it's a real, alive monster in this same
+			// instance, before falling back to picking one nearby ourselves.
+			lines.push(
+				"    if (typeof partner !== 'undefined' && partner && partner.target && pool[partner.target] && !pool[partner.target].dead) {",
+				"      player.target = partner.target;",
+				"    }",
+			);
+		}
+		lines.push(
+			"    if (!player.target || !pool[player.target]) { if (nearby[0]) player.target = nearby[0].id; }",
+			"    if (player.target && pool[player.target]) {",
+			"      try { player.socket.fs.skill({ name: 'attack', id: player.target }); } catch (e) {}",
 			"    }",
+			"  }",
 		);
 	}
 	lines.push(
-		"    if (!player.target || !pool[player.target]) { if (nearby[0]) player.target = nearby[0].id; }",
-		"    if (player.target && pool[player.target]) {",
-		"      try { player.socket.fs.skill({ name: 'attack', id: player.target }); } catch (e) {}",
-		"    }",
-		"  }",
 		"}",
 		"output = { hp: player.hp, max_hp: player.max_hp, rip: player.rip, target: player.target };",
 	);

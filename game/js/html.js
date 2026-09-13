@@ -151,7 +151,12 @@ function render_party() {
 	var html = "";
 	for (var name in party) {
 		var member = party[name];
-		html += " <div class='gamebutton' style='padding: 6px 8px 6px 8px; font-size: 24px; line-height: 18px' onclick='pcs(event); party_click(\"" + name + "\")'>";
+		html +=
+			" <div class='gamebutton' style='padding: 6px 8px 6px 8px; font-size: 24px; line-height: 18px' onclick='pcs(event); party_click(\"" +
+			name +
+			"\")' oncontextmenu='return party_context_menu(event, \"" +
+			name +
+			"\")'>";
 		html += sprite(member.skin, { cx: member.cx || [], rip: member.rip, scale: 2, height: 50, overflow: true });
 		if (member.rip) html += "<div style='color:gray; margin-top: 1px'>RIP</div>";
 		else html += "<div style='margin-top: 1px'>" + name.substr(0, 3).toUpperCase() + "</div>";
