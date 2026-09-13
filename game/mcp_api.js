@@ -3007,15 +3007,21 @@ async function handle_mcp_transport(req, res) {
 	}
 	if (message.method === "tools/list") {
 		if (message.params && message.params.cursor) return res.status(200).send(mcp_jsonrpc_error(message.id, -32602, "Invalid cursor"));
-		return res.status(200).send(mcp_jsonrpc(message.id, { tools: mcp_tools(), _meta: mcp_result_meta() }));
+		var tools_result = { tools: mcp_tools(), _meta: mcp_result_meta() };
+		if (modern) tools_result.resultType = "complete";
+		return res.status(200).send(mcp_jsonrpc(message.id, tools_result));
 	}
 	if (message.method === "resources/list") {
 		if (message.params && message.params.cursor) return res.status(200).send(mcp_jsonrpc_error(message.id, -32602, "Invalid cursor"));
-		return res.status(200).send(mcp_jsonrpc(message.id, { resources: mcp_resources(), _meta: mcp_result_meta() }));
+		var resources_result = { resources: mcp_resources(), _meta: mcp_result_meta() };
+		if (modern) resources_result.resultType = "complete";
+		return res.status(200).send(mcp_jsonrpc(message.id, resources_result));
 	}
 	if (message.method === "resources/templates/list") {
 		if (message.params && message.params.cursor) return res.status(200).send(mcp_jsonrpc_error(message.id, -32602, "Invalid cursor"));
-		return res.status(200).send(mcp_jsonrpc(message.id, { resourceTemplates: mcp_resource_templates(), _meta: mcp_result_meta() }));
+		var resource_templates_result = { resourceTemplates: mcp_resource_templates(), _meta: mcp_result_meta() };
+		if (modern) resource_templates_result.resultType = "complete";
+		return res.status(200).send(mcp_jsonrpc(message.id, resource_templates_result));
 	}
 	if (message.method === "resources/read") {
 		var uri = message.params && message.params.uri;
@@ -3023,7 +3029,9 @@ async function handle_mcp_transport(req, res) {
 		try {
 			var content = await mcp_read_resource(uri, user);
 			if (!content) return res.status(200).send(mcp_jsonrpc_error(message.id, -32002, "Resource not found", { uri: uri }));
-			return res.status(200).send(mcp_jsonrpc(message.id, { contents: [content], _meta: mcp_result_meta() }));
+			var read_result = { contents: [content], _meta: mcp_result_meta() };
+			if (modern) read_result.resultType = "complete";
+			return res.status(200).send(mcp_jsonrpc(message.id, read_result));
 		} catch (e) {
 			console.error("mcp resource read error", e);
 			return res.status(200).send(
@@ -3036,7 +3044,9 @@ async function handle_mcp_transport(req, res) {
 	}
 	if (message.method === "prompts/list") {
 		if (message.params && message.params.cursor) return res.status(200).send(mcp_jsonrpc_error(message.id, -32602, "Invalid cursor"));
-		return res.status(200).send(mcp_jsonrpc(message.id, { prompts: mcp_prompt_list(), _meta: mcp_result_meta() }));
+		var prompts_result = { prompts: mcp_prompt_list(), _meta: mcp_result_meta() };
+		if (modern) prompts_result.resultType = "complete";
+		return res.status(200).send(mcp_jsonrpc(message.id, prompts_result));
 	}
 	if (message.method === "prompts/get") {
 		var prompt_name = message.params && message.params.name;
@@ -3044,6 +3054,7 @@ async function handle_mcp_transport(req, res) {
 		var prompt = await mcp_get_prompt(prompt_name, message.params.arguments, user);
 		if (prompt.error) return res.status(200).send(mcp_jsonrpc_error(message.id, -32602, prompt.error));
 		prompt._meta = mcp_result_meta();
+		if (modern) prompt.resultType = "complete";
 		return res.status(200).send(mcp_jsonrpc(message.id, prompt));
 	}
 	if (message.method === "tools/call") {
@@ -3063,17 +3074,18 @@ async function handle_mcp_transport(req, res) {
 				isError: result && result.failed === true,
 				_meta: mcp_result_meta(),
 			};
+			if (modern) tool_result.resultType = "complete";
 			return res.status(200).send(mcp_jsonrpc(message.id, tool_result));
 		} catch (e) {
 			console.error("mcp tool " + name + " error", e);
-			return res.status(200).send(
-				mcp_jsonrpc(message.id, {
-					content: [{ type: "text", text: JSON.stringify({ failed: true, reason: "exception" }) }],
-					structuredContent: { failed: true, reason: "exception" },
-					isError: true,
-					_meta: mcp_result_meta(),
-				}),
-			);
+			var error_result = {
+				content: [{ type: "text", text: JSON.stringify({ failed: true, reason: "exception" }) }],
+				structuredContent: { failed: true, reason: "exception" },
+				isError: true,
+				_meta: mcp_result_meta(),
+			};
+			if (modern) error_result.resultType = "complete";
+			return res.status(200).send(mcp_jsonrpc(message.id, error_result));
 		}
 	}
 	return res.status(200).send(mcp_jsonrpc_error(message.id, -32601, "Method not found"));
