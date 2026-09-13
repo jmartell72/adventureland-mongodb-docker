@@ -424,6 +424,16 @@ async function local_eval(character_name, code) {
 	return raw_eval(wrapped);
 }
 
+// True liveness check - is this display name a real player in node/server.js
+// right now - as opposed to is_connected(), which only reflects bots.js's
+// OWN connection pool and says nothing about a character the user is
+// currently playing themselves (e.g. after switch_character's "Play as").
+// A single raw_eval covering every character at once, not a call per name.
+async function live_display_names() {
+	var result = await raw_eval("output = Object.keys(name_to_id).filter(function(n){ return !!players[name_to_id[n]]; });");
+	return Array.isArray(result) ? result : [];
+}
+
 // Party command center's item transfer: same core logic as node/server.js's
 // real socket.on("send", ...) handler (create_new_sitem/can_add_item/
 // add_item/add_to_history/resend - not a reimplementation, the exact same
@@ -537,4 +547,5 @@ module.exports = {
 	raw_eval: raw_eval,
 	local_eval: local_eval,
 	transfer_item: transfer_item,
+	live_display_names: live_display_names,
 };

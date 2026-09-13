@@ -381,7 +381,8 @@ app.post("/admin/panel/bots/combat_mode", async (req, res) => {
 // bots.js's transfer_item.
 var PARTY_EQUIP_SLOTS = ["mainhand", "offhand", "helmet", "chest", "pants", "gloves", "boots", "amulet", "ring1", "ring2", "orb", "cape", "belt", "elixir"];
 
-function party_command_center_html(characters, s, status_message) {
+function party_command_center_html(characters, s, status_message, live_names) {
+	live_names = live_names || [];
 	function esc(v) {
 		return ("" + v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
 	}
@@ -425,7 +426,8 @@ function party_command_center_html(characters, s, status_message) {
 			var max_xp = (typeof G !== "undefined" && G.levels && G.levels[level + ""]) || 0;
 			var xp = c.xp || 0;
 			var pct = max_xp ? Math.min(100, Math.round((xp / max_xp) * 100)) : 0;
-			var live = bots.is_connected(c.name);
+			var display_name = (c.info && c.info.name) || c.name;
+			var live = live_names.indexOf(display_name) !== -1;
 			var ctype = c.type || c.ctype || "?";
 			var items = Array.isArray(c.items) ? c.items : [];
 			var slots = c.slots || {};
@@ -490,7 +492,13 @@ app.get("/admin/party", async (req, res) => {
 	var status_message = null;
 	if (req.query.transfer === "ok") status_message = { ok: true, text: "Item sent." };
 	else if (req.query.transfer) status_message = { ok: false, text: "Transfer failed: " + req.query.transfer };
-	res.send(party_command_center_html(characters, settings.get(), status_message));
+	var live_names;
+	try {
+		live_names = await bots.live_display_names();
+	} catch (e) {
+		live_names = [];
+	}
+	res.send(party_command_center_html(characters, settings.get(), status_message, live_names));
 });
 
 app.post("/admin/party/manual", async (req, res) => {
@@ -520,7 +528,6 @@ app.post("/admin/party/transfer", async (req, res) => {
 		return json ? res.status(400).send({ failed: true, reason: reason }) : res.redirect("/admin/party?transfer=" + encodeURIComponent(reason));
 	}
 	if (!from_name || !to_name || !Number.isFinite(index)) return fail("invalid_request");
-	if (!bots.is_connected(from_name) || !bots.is_connected(to_name)) return fail("not_connected");
 	var from_character = await db.collection("character").findOne({ name: from_name }, { projection: { "info.name": 1 } });
 	var to_character = await db.collection("character").findOne({ name: to_name }, { projection: { "info.name": 1 } });
 	if (!from_character || !to_character) return fail("unknown_character");
@@ -546,21 +553,32 @@ app.get("/admin/party/data", async (req, res) => {
 		.find({}, { projection: { name: 1, "info.name": 1, level: 1, xp: 1, type: 1, ctype: 1, items: 1, slots: 1 } })
 		.toArray();
 	var bots_config = settings.get().bots || {};
+	var live_names;
+	try {
+		live_names = await bots.live_display_names();
+	} catch (e) {
+		live_names = [];
+	}
 	res.send({
 		characters: characters.map(function (c) {
 			var cfg = bots_config[c.name] || {};
 			var level = c.level || 1;
 			var max_xp = (typeof G !== "undefined" && G.levels && G.levels[level + ""]) || 0;
+			var display_name = (c.info && c.info.name) || c.name;
 			return {
 				name: c.name,
-				display_name: (c.info && c.info.name) || c.name,
+				display_name: display_name,
 				ctype: c.type || c.ctype || "?",
 				level: level,
 				xp: c.xp || 0,
 				max_xp: max_xp,
 				items: Array.isArray(c.items) ? c.items : [],
 				slots: c.slots || {},
-				connected: bots.is_connected(c.name),
+				// True liveness (real player object right now), not just
+				// bots.js's own connection pool - a character you're
+				// currently playing yourself (e.g. via "Play as") is live
+				// too, even though bots.js never connected it.
+				connected: live_names.indexOf(display_name) !== -1,
 				bot_enabled: !!cfg.enabled,
 				bot_mode: cfg.mode || "farm",
 			};
