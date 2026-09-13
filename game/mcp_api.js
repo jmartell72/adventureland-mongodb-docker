@@ -1160,6 +1160,58 @@ async function mcp_api_get_bank(args) {
 	return saved;
 }
 
+// Private-fork diagnostic tool, not part of upstream: read-only view of
+// bots.js automation state for every owned character - the config
+// (settings.json's "bots" section) plus, for anything currently connected,
+// a live snapshot (map, position, hp, current target, nearby monster
+// count) pulled the same way bots.js itself reads/writes state - through
+// bots.raw_eval into node/server.js's live player objects. Exists so an AI
+// session can diagnose "why isn't this bot doing anything" (no farm map
+// configured, sitting in a monster-free map, dead/rip, no valid target,
+// etc.) directly through MCP instead of needing production file/DB access.
+async function mcp_api_bots_status(args) {
+	var characters = await db
+		.collection("character")
+		.find({ owner: args.user._id }, { projection: { name: 1, "info.name": 1 } })
+		.toArray();
+	var bots_config = settings.get().bots || {};
+	var results = [];
+	for (var i = 0; i < characters.length; i++) {
+		var c = characters[i];
+		var display_name = (c.info && c.info.name) || c.name;
+		var cfg = bots_config[c.name] || {};
+		var connected = bots.is_connected(c.name);
+		var live = null;
+		if (connected) {
+			try {
+				live = await bots.raw_eval(
+					[
+						"var p = players[name_to_id[" + JSON.stringify(display_name) + "]];",
+						"if (!p) { output = null; } else {",
+						"  var pool = (instances[p.in] && instances[p.in].monsters) || {};",
+						"  var nearby = Object.values(pool).filter(function(m){ return m && !m.dead; }).length;",
+						"  output = { map: p.in, x: p.x, y: p.y, hp: p.hp, max_hp: p.max_hp, rip: p.rip, target: p.target || null, party: p.party || null, nearby_monsters: nearby };",
+						"}",
+					].join("\n"),
+				);
+			} catch (e) {
+				live = { error: "eval_failed" };
+			}
+		}
+		results.push({
+			character: display_name,
+			bot_enabled: !!cfg.enabled,
+			bot_mode: cfg.mode || null,
+			bot_farm_map: cfg.map || null,
+			bot_party_with: cfg.party_with || null,
+			bot_combat_mode: cfg.combat_mode || null,
+			connected: connected,
+			live: live,
+		});
+	}
+	return { characters: results };
+}
+
 function mcp_api_bank_equipment_candidates(bank) {
 	if (!bank || bank.stale || !bank.packs) return [];
 	var equipment_types = new Set(["helmet", "pants", "chest", "weapon", "amulet", "earring", "shoes", "gloves", "ring", "shield", "belt", "source", "orb", "quiver", "cape", "misc_offhand", "tool"]);
@@ -2032,6 +2084,7 @@ var MCP_API_REF = {
 	},
 	get_libraries: { F: mcp_api_get_libraries },
 	get_bank: { F: mcp_api_get_bank },
+	bots_status: { F: mcp_api_bots_status },
 	plan_character_progression: {
 		F: mcp_api_plan_character_progression,
 		character: { type: "identifier" },
@@ -2128,6 +2181,11 @@ var MCP_TOOL_META = {
 	get_libraries: { description: "Read the standard local CODE helper files used by the old client sync folder.", readOnlyHint: true },
 	get_bank: {
 		description: "Read all account-owned bank packs and gold from the saved account snapshot. A mounted bank is marked stale and excluded from progression comparisons.",
+		readOnlyHint: true,
+	},
+	bots_status: {
+		description:
+			"Private-fork tool (not upstream Adventure Land): list every owned character's bots.js server-side automation config (enabled, mode, farm map, party_with, combat_mode) plus, for anything currently connected, a live snapshot (map, position, hp, current target, party, nearby monster count). Use this to diagnose why an automated character isn't moving/fighting - e.g. no farm map configured, sitting on a monster-free map, dead, or no valid target.",
 		readOnlyHint: true,
 	},
 	plan_character_progression: {
