@@ -27,7 +27,12 @@
 (function () {
 	var PENDING_KEY = "aland_switch_pending_runners";
 
-	function switch_character() {
+	// destination defaults to base_url (the character-select screen, same as
+	// this file's own HUD button). party_command_center.js's "Play as X"
+	// action passes a direct /character/<name>/in/<region>/<sname> URL
+	// instead, so picking the target character is one click instead of
+	// landing on the select screen and clicking it there too.
+	function switch_character(destination) {
 		var pending = [];
 		try {
 			pending = JSON.parse(localStorage.getItem(PENDING_KEY) || "[]");
@@ -41,7 +46,7 @@
 				console.error("[switch_character] failed to background " + character.name, e);
 			}
 		}
-		window.location.href = base_url;
+		window.location.href = destination || base_url;
 	}
 	window.switch_character = switch_character;
 
