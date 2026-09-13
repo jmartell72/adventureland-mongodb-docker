@@ -1238,7 +1238,15 @@ function on_skill(key, event) {
 	} else if (name == "interact") {
 		npc_focus();
 	} else if (name == "toggle_inventory") {
-		render_inventory();
+		// [private fork] party_command_center.js installs
+		// window.party_toggle_inventory to replace the single-character
+		// inventory screen with a multi-character (Kingmartell/Burt/Healz/...)
+		// view. Only this one, explicit "open the inventory" action is
+		// redirected - every other render_inventory() call site (shop/NPC
+		// context, post-purchase refresh, etc.) is untouched and keeps
+		// showing your own character's real inventory exactly as before.
+		if (typeof window.party_toggle_inventory === "function") window.party_toggle_inventory();
+		else render_inventory();
 	} else if (name == "toggle_character") {
 		toggle_character();
 	} else if (name == "toggle_stats") {
