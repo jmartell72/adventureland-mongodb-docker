@@ -2943,6 +2943,15 @@ function mcp_result_meta() {
 	return { "io.modelcontextprotocol/serverInfo": MCP_SERVER_INFO };
 }
 
+var MCP_PRIVATE_RESOURCE_PREFIXES = ["adventureland://account/", "adventureland://mainframe/characters/", "adventureland://progression/characters/", "adventureland://code/slots/"];
+
+function mcp_resource_cache_hints(uri) {
+	var is_private = MCP_PRIVATE_RESOURCE_PREFIXES.some(function (prefix) {
+		return uri.indexOf(prefix) === 0;
+	});
+	return is_private ? { ttlMs: 15000, cacheScope: "private" } : { ttlMs: 3600000, cacheScope: "public" };
+}
+
 function mcp_capabilities() {
 	return { tools: { listChanged: false }, resources: { listChanged: false }, prompts: { listChanged: false } };
 }
@@ -2981,17 +2990,17 @@ async function handle_mcp_transport(req, res) {
 	if (message.id === undefined) return res.status(202).end();
 	if (message.method === "ping") return res.status(200).send(mcp_jsonrpc(message.id, {}));
 	if (message.method === "server/discover") {
-		return res.status(200).send(
-			mcp_jsonrpc(message.id, {
-				supportedVersions: [MCP_PROTOCOL_CURRENT, MCP_PROTOCOL_LEGACY],
-				capabilities: mcp_capabilities(),
-				instructions: MCP_INSTRUCTIONS,
-				startResource: MCP_START_RESOURCE,
-				ttlMs: 3600000,
-				cacheScope: "global",
-				_meta: mcp_result_meta(),
-			}),
-		);
+		var discover_result = {
+			supportedVersions: [MCP_PROTOCOL_CURRENT, MCP_PROTOCOL_LEGACY],
+			capabilities: mcp_capabilities(),
+			instructions: MCP_INSTRUCTIONS,
+			startResource: MCP_START_RESOURCE,
+			ttlMs: 3600000,
+			cacheScope: "public",
+			_meta: mcp_result_meta(),
+		};
+		if (modern) discover_result.resultType = "complete";
+		return res.status(200).send(mcp_jsonrpc(message.id, discover_result));
 	}
 	if (message.method === "initialize") {
 		var requested = message.params && message.params.protocolVersion;
@@ -3008,19 +3017,19 @@ async function handle_mcp_transport(req, res) {
 	if (message.method === "tools/list") {
 		if (message.params && message.params.cursor) return res.status(200).send(mcp_jsonrpc_error(message.id, -32602, "Invalid cursor"));
 		var tools_result = { tools: mcp_tools(), _meta: mcp_result_meta() };
-		if (modern) tools_result.resultType = "complete";
+		if (modern) Object.assign(tools_result, { resultType: "complete", ttlMs: 300000, cacheScope: "public" });
 		return res.status(200).send(mcp_jsonrpc(message.id, tools_result));
 	}
 	if (message.method === "resources/list") {
 		if (message.params && message.params.cursor) return res.status(200).send(mcp_jsonrpc_error(message.id, -32602, "Invalid cursor"));
 		var resources_result = { resources: mcp_resources(), _meta: mcp_result_meta() };
-		if (modern) resources_result.resultType = "complete";
+		if (modern) Object.assign(resources_result, { resultType: "complete", ttlMs: 300000, cacheScope: "public" });
 		return res.status(200).send(mcp_jsonrpc(message.id, resources_result));
 	}
 	if (message.method === "resources/templates/list") {
 		if (message.params && message.params.cursor) return res.status(200).send(mcp_jsonrpc_error(message.id, -32602, "Invalid cursor"));
 		var resource_templates_result = { resourceTemplates: mcp_resource_templates(), _meta: mcp_result_meta() };
-		if (modern) resource_templates_result.resultType = "complete";
+		if (modern) Object.assign(resource_templates_result, { resultType: "complete", ttlMs: 300000, cacheScope: "public" });
 		return res.status(200).send(mcp_jsonrpc(message.id, resource_templates_result));
 	}
 	if (message.method === "resources/read") {
@@ -3030,7 +3039,7 @@ async function handle_mcp_transport(req, res) {
 			var content = await mcp_read_resource(uri, user);
 			if (!content) return res.status(200).send(mcp_jsonrpc_error(message.id, -32002, "Resource not found", { uri: uri }));
 			var read_result = { contents: [content], _meta: mcp_result_meta() };
-			if (modern) read_result.resultType = "complete";
+			if (modern) Object.assign(read_result, { resultType: "complete" }, mcp_resource_cache_hints(uri));
 			return res.status(200).send(mcp_jsonrpc(message.id, read_result));
 		} catch (e) {
 			console.error("mcp resource read error", e);
@@ -3045,7 +3054,7 @@ async function handle_mcp_transport(req, res) {
 	if (message.method === "prompts/list") {
 		if (message.params && message.params.cursor) return res.status(200).send(mcp_jsonrpc_error(message.id, -32602, "Invalid cursor"));
 		var prompts_result = { prompts: mcp_prompt_list(), _meta: mcp_result_meta() };
-		if (modern) prompts_result.resultType = "complete";
+		if (modern) Object.assign(prompts_result, { resultType: "complete", ttlMs: 300000, cacheScope: "public" });
 		return res.status(200).send(mcp_jsonrpc(message.id, prompts_result));
 	}
 	if (message.method === "prompts/get") {
