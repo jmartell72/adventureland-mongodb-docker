@@ -154,6 +154,7 @@ function admin_panel_html(s, saved, backup_status, characters) {
 </style></head>
 <body>
 	<h1>Server Settings</h1>
+	<div style="margin-bottom:12px;"><a href="/admin/party" style="color:#9cf;">Party Command Center &rarr;</a></div>
 	${saved ? '<div class="saved">Saved.</div>' : ""}
 	<form method="post" action="/admin/panel/save">
 		<fieldset>
@@ -197,7 +198,7 @@ function admin_panel_html(s, saved, backup_status, characters) {
 							.map(function (c) {
 								var cfg = s.bots[c.name] || {};
 								var enabled = !!cfg.enabled;
-								var mode = ["farm", "companion", "merchant", "custom"].indexOf(cfg.mode) !== -1 ? cfg.mode : "farm";
+								var mode = ["farm", "companion", "merchant", "custom", "idle"].indexOf(cfg.mode) !== -1 ? cfg.mode : "farm";
 								var live = bots.is_connected(c.name);
 								var other_names = characters.filter(function (o) {
 									return o.name !== c.name;
@@ -230,7 +231,9 @@ function admin_panel_html(s, saved, backup_status, characters) {
 									(mode === "merchant" ? " selected" : "") +
 									'>Merchant</option><option value="custom"' +
 									(mode === "custom" ? " selected" : "") +
-									">Custom</option></select></label>" +
+									'>Custom</option><option value="idle"' +
+									(mode === "idle" ? " selected" : "") +
+									">Idle (stays connected, does nothing)</option></select></label>" +
 									'<label>Combat (companion mode)<br><select name="combat_' +
 									esc(c.name) +
 									'"><option value="assist"' +
@@ -333,7 +336,7 @@ app.post("/admin/panel/bots", async (req, res) => {
 		var mode = body["mode_" + c.name];
 		bots_config[c.name] = {
 			enabled: !!body["bot_" + c.name],
-			mode: ["farm", "companion", "merchant", "custom"].indexOf(mode) !== -1 ? mode : "farm",
+			mode: ["farm", "companion", "merchant", "custom", "idle"].indexOf(mode) !== -1 ? mode : "farm",
 			combat_mode: body["combat_" + c.name] === "passive" ? "passive" : "assist",
 			map: (body["map_" + c.name] || "").trim(),
 			party_with: body["party_" + c.name] || "",
@@ -363,6 +366,167 @@ app.post("/admin/panel/bots/combat_mode", async (req, res) => {
 	bots_config[name] = Object.assign({}, bots_config[name], { combat_mode: combat_mode });
 	settings.update({ bots: bots_config });
 	res.send({ ok: true, combat_mode: combat_mode });
+});
+
+// ==================== [private fork] Party command center ====================
+// Read/manage every owned character's level/XP/equipment/inventory from one
+// page, regardless of which one you're currently playing - the "single
+// player, multiple characters" equivalent of a BG3/NWN2 party screen. Levels
+// and equipped/inventory items are read straight from the character
+// collection (accurate at last-save even if the character is fully
+// offline); moving items between characters requires both to be live player
+// objects (bots.js "idle" mode exists specifically so an otherwise-unused
+// character can sit connected-and-safe for this) since add_item/
+// calculate_player_stats assume a real connected player - see
+// bots.js's transfer_item.
+var PARTY_EQUIP_SLOTS = ["mainhand", "offhand", "helmet", "chest", "pants", "gloves", "boots", "amulet", "ring1", "ring2", "orb", "cape", "belt", "elixir"];
+
+function party_command_center_html(characters, s, status_message) {
+	function esc(v) {
+		return ("" + v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+	}
+	function item_label(item) {
+		if (!item) return "";
+		return esc(item.name) + (item.level ? " +" + esc(item.level) : "") + (item.q > 1 ? " x" + esc(item.q) : "");
+	}
+	var bots_config = s.bots || {};
+	return `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Party Command Center</title>
+<style>
+	body { background:#111; color:#ddd; font-family:monospace; padding:24px; max-width:960px; margin:0 auto; }
+	h1 { color:#fff; font-size:20px; }
+	a { color:#9cf; }
+	.card { border:1px solid #444; border-radius:6px; padding:12px; margin-bottom:14px; }
+	.xpbar { background:#222; border-radius:4px; height:10px; overflow:hidden; margin:4px 0 10px; }
+	.xpbar-fill { background:#4a8; height:100%; }
+	.slots { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
+	.slot { border:1px solid #555; border-radius:4px; padding:3px 6px; font-size:11px; background:#000; }
+	.slot.empty { color:#555; }
+	.item-row { display:flex; align-items:center; gap:6px; font-size:12px; padding:2px 0; border-bottom:1px solid #222; }
+	.item-row form { display:flex; align-items:center; gap:4px; margin-left:auto; }
+	select, input[type=number] { background:#000; color:#eee; border:1px solid #555; border-radius:3px; font-family:monospace; }
+	button { background:#2a6; color:#fff; border:none; border-radius:4px; padding:4px 10px; cursor:pointer; }
+	button:hover { background:#3b7; }
+	.hint { color:#888; font-size:12px; }
+	.status { color:#7d7; margin-bottom:12px; }
+	.err { color:#d77; margin-bottom:12px; }
+	.badge { font-size:11px; padding:1px 6px; border-radius:3px; margin-left:6px; }
+	.badge.on { background:#274; color:#9f9; }
+	.badge.off { background:#432; color:#ca9; }
+</style></head>
+<body>
+	<h1>Party Command Center</h1>
+	<div><a href="/admin/panel">&larr; Server Settings</a></div>
+	${status_message ? `<div class="${status_message.ok ? "status" : "err"}">${esc(status_message.text)}</div>` : ""}
+	${characters
+		.map(function (c) {
+			var cfg = bots_config[c.name] || {};
+			var level = c.level || 1;
+			var max_xp = (typeof G !== "undefined" && G.levels && G.levels[level + ""]) || 0;
+			var xp = c.xp || 0;
+			var pct = max_xp ? Math.min(100, Math.round((xp / max_xp) * 100)) : 0;
+			var live = bots.is_connected(c.name);
+			var ctype = c.type || c.ctype || "?";
+			var items = Array.isArray(c.items) ? c.items : [];
+			var slots = c.slots || {};
+			var other_names = characters.filter(function (o) {
+				return o.name !== c.name;
+			});
+			return (
+				`<div class="card">` +
+				`<b>${esc(c.info && c.info.name ? c.info.name : c.name)}</b> - ${esc(ctype)}, Level ${esc(level)}` +
+				`<span class="badge ${live ? "on" : "off"}">${live ? "connected" : "offline"}</span>` +
+				`<span class="badge ${cfg.enabled ? "on" : "off"}">${esc(cfg.mode || "farm")}${cfg.enabled ? "" : " (disabled)"}</span>` +
+				`<div class="xpbar"><div class="xpbar-fill" style="width:${pct}%"></div></div>` +
+				`<div class="hint">${esc(xp)} / ${esc(max_xp || "?")} XP</div>` +
+				`<form method="post" action="/admin/party/manual" style="margin:6px 0;">` +
+				`<input type="hidden" name="character" value="${esc(c.name)}">` +
+				`<input type="hidden" name="enabled" value="${cfg.enabled ? "0" : "1"}">` +
+				`<button type="submit">${cfg.enabled ? "Take manual control (stop bot)" : "Re-enable bot"}</button>` +
+				`</form>` +
+				(cfg.enabled ? "" : `<div class="hint">Bot stopped - log in as this character from the character-select screen to play it directly.</div>`) +
+				`<div class="slots">` +
+				PARTY_EQUIP_SLOTS.map(function (slot) {
+					var item = slots[slot];
+					return `<div class="slot${item ? "" : " empty"}">${esc(slot)}: ${item ? item_label(item) : "-"}</div>`;
+				}).join("") +
+				`</div>` +
+				items
+					.map(function (item, i) {
+						if (!item) return "";
+						return (
+							`<div class="item-row"><span>[${i}] ${item_label(item)}</span>` +
+							`<form method="post" action="/admin/party/transfer">` +
+							`<input type="hidden" name="from" value="${esc(c.name)}">` +
+							`<input type="hidden" name="index" value="${i}">` +
+							`<select name="to">` +
+							other_names
+								.map(function (o) {
+									return `<option value="${esc(o.name)}">${esc(o.name)}</option>`;
+								})
+								.join("") +
+							`</select>` +
+							`<input type="number" name="quantity" value="${item.q || 1}" min="1" max="${item.q || 1}" style="width:50px">` +
+							`<button type="submit">Send</button>` +
+							`</form></div>`
+						);
+					})
+					.join("") +
+				`</div>`
+			);
+		})
+		.join("")}
+	<div class="hint">Item transfers need both characters connected (any bot mode, including Idle) - offline characters show read-only above.</div>
+</body></html>`;
+}
+
+app.get("/admin/party", async (req, res) => {
+	var user = await get_user(req);
+	if (!is_admin(user)) return res.status(403).send("Forbidden");
+	var characters = await db
+		.collection("character")
+		.find({}, { projection: { name: 1, "info.name": 1, level: 1, xp: 1, type: 1, ctype: 1, items: 1, slots: 1 } })
+		.toArray();
+	var status_message = null;
+	if (req.query.transfer === "ok") status_message = { ok: true, text: "Item sent." };
+	else if (req.query.transfer) status_message = { ok: false, text: "Transfer failed: " + req.query.transfer };
+	res.send(party_command_center_html(characters, settings.get(), status_message));
+});
+
+app.post("/admin/party/manual", async (req, res) => {
+	var user = await get_user(req);
+	if (!is_admin(user)) return res.status(403).send("Forbidden");
+	var body = req.body || {};
+	var name = String(body.character || "").toLowerCase();
+	var enabled = body.enabled === "1";
+	if (!name) return res.redirect("/admin/party");
+	var bots_config = Object.assign({}, settings.get().bots || {});
+	bots_config[name] = Object.assign({ mode: "idle" }, bots_config[name], { enabled: enabled });
+	settings.update({ bots: bots_config });
+	res.redirect("/admin/party");
+});
+
+app.post("/admin/party/transfer", async (req, res) => {
+	var user = await get_user(req);
+	if (!is_admin(user)) return res.status(403).send("Forbidden");
+	var body = req.body || {};
+	var from_name = String(body.from || "").toLowerCase();
+	var to_name = String(body.to || "").toLowerCase();
+	var index = parseInt(body.index, 10);
+	var quantity = parseInt(body.quantity, 10) || null;
+	if (!from_name || !to_name || !Number.isFinite(index)) return res.redirect("/admin/party?transfer=invalid_request");
+	if (!bots.is_connected(from_name) || !bots.is_connected(to_name)) return res.redirect("/admin/party?transfer=not_connected");
+	var from_character = await db.collection("character").findOne({ name: from_name }, { projection: { "info.name": 1 } });
+	var to_character = await db.collection("character").findOne({ name: to_name }, { projection: { "info.name": 1 } });
+	if (!from_character || !to_character) return res.redirect("/admin/party?transfer=unknown_character");
+	try {
+		var result = await bots.transfer_item(from_character.info.name, index, to_character.info.name, quantity);
+		if (result && result.ok) return res.redirect("/admin/party?transfer=ok");
+		return res.redirect("/admin/party?transfer=" + encodeURIComponent((result && result.reason) || "unknown"));
+	} catch (e) {
+		console.error("[party transfer] failed", e);
+		return res.redirect("/admin/party?transfer=exception");
+	}
 });
 
 app.post("/admin/panel/backup", async (req, res) => {

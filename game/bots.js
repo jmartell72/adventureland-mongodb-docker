@@ -62,7 +62,18 @@
 //                 "custom": runs custom_code (a raw code string, same
 //                 scope as the admin executor's local_eval snippets - see
 //                 main.js) every tick instead of any of the above, with
-//                 rip-recovery still handled automatically first.
+//                 rip-recovery still handled automatically first. "idle":
+//                 just stays connected and safe (teleports once to the
+//                 "main" map's default spawn, then does nothing) - for a
+//                 character you're not actively running but still want
+//                 reachable for the party command center's item/equipment
+//                 management, which needs a live player object to do
+//                 anything (see build_idle_code below).
+//   combat_mode - "assist" (default) or "passive". Only meaningful when
+//                 mode is "companion": passive still follows but never
+//                 targets or attacks (see build_ai_code's
+//                 passive_companion check) - set via the in-game party
+//                 right-click menu (js/party_control.js) or this panel.
 //   mluck_targets - array of stored (lowercase) character names to keep
 //                 mluck'd. Only meaningful when mode is "merchant".
 //   custom_code - raw code string run every tick when mode is "custom".
@@ -223,6 +234,28 @@ function build_merchant_code(target_display_names) {
 	return lines.join("\n");
 }
 
+// Runs instead of build_ai_code/build_merchant_code when mode is "idle" -
+// stays connected (so the party command center can move/equip items on it
+// any time) without farming, fighting, or otherwise acting. Safety over
+// realism: teleports once to the "main" map's own default spawn point (no
+// explicit point argument - transport_player_to falls back to
+// new_map.spawns[0], node/server.js:4328 - the same monster-free spot
+// every new character and fast-traveler already lands on) and then just
+// sits there - never picks a target, never walks toward anything, so it
+// can't wander into a monster spawn on its own. rip-recovery still
+// applies since aggro could theoretically still catch it during the one
+// tick before its first teleport lands.
+function build_idle_code() {
+	return [
+		"if (player.rip) {",
+		"  player.hp = player.max_hp; player.mp = player.max_mp; player.rip = false;",
+		"} else if (player.in !== 'main') {",
+		"  try { transport_player_to(player, 'main'); } catch (e) {}",
+		"}",
+		"output = { hp: player.hp, max_hp: player.max_hp, rip: player.rip, in: player.in };",
+	].join("\n");
+}
+
 // Runs instead of build_ai_code/build_merchant_code when mode is "custom" -
 // full user control, same eval scope every other bot mode already uses.
 function build_custom_code(config) {
@@ -370,6 +403,52 @@ async function local_eval(character_name, code) {
 	return raw_eval(wrapped);
 }
 
+// Party command center's item transfer: same core logic as node/server.js's
+// real socket.on("send", ...) handler (create_new_sitem/can_add_item/
+// add_item/add_to_history/resend - not a reimplementation, the exact same
+// calls in the exact same order), minus the distance/same-map requirement
+// that's meaningless from an out-of-game admin panel. Both characters must
+// already be live player objects (bot-connected, in any mode including
+// "idle") - there's no offline path, since add_item/calculate_player_stats
+// assume a real connected player (socket, s, esize, etc.), and getting that
+// wrong risks silently corrupting saved state. from/to_display_name are
+// the original-cased name_to_id keys (see get_display_name in main.js),
+// from_index is the inventory slot on the source character, quantity is
+// optional (defaults to the whole stack).
+async function transfer_item(from_display_name, from_index, to_display_name, quantity) {
+	var code = [
+		"var from_player = players[name_to_id[" + JSON.stringify(from_display_name) + "]];",
+		"var to_player = players[name_to_id[" + JSON.stringify(to_display_name) + "]];",
+		"if (!from_player || !to_player) { output = { failed: true, reason: 'not_connected' }; } else {",
+		"  var num = " + JSON.stringify(from_index) + ";",
+		"  var item = from_player.items[num];",
+		"  if (!item) { output = { failed: true, reason: 'no_item' }; }",
+		"  else if (item.l) { output = { failed: true, reason: 'item_locked' }; }",
+		"  else {",
+		"    var q = Math.max(1, Math.min(item.q || 1, " + JSON.stringify(quantity || null) + " || (item.q || 1)));",
+		"    var candidate = item.q ? create_new_sitem(item, q) : item;",
+		"    if (!can_add_item(to_player, candidate)) { output = { failed: true, reason: 'no_space' }; }",
+		"    else {",
+		"      if ((item.q || 1) == q) {",
+		"        from_player.items[num] = from_player.citems[num] = null;",
+		"        from_player.esize++;",
+		"      } else {",
+		"        from_player.items[num].q -= q;",
+		"        from_player.citems[num] = cache_item(from_player.items[num]);",
+		"      }",
+		"      var dest_num = add_item(to_player, candidate, { announce: false });",
+		"      add_to_history(from_player, { name: 'item', to: to_player.name, item: item.name, q: q, level: item.level });",
+		"      add_to_history(to_player, { name: 'item', from: from_player.name, item: item.name, q: q, level: item.level });",
+		"      resend(from_player, 'reopen+nc+inv');",
+		"      resend(to_player, 'reopen+nc+inv');",
+		"      output = { ok: true, dest_num: dest_num };",
+		"    }",
+		"  }",
+		"}",
+	].join("\n");
+	return raw_eval(code);
+}
+
 // get_display_name(stored_name) resolves settings.json's lowercase key
 // (character.name) to the live name_to_id lookup key (character.info.name,
 // original casing) - works for any stored name, not just the bot's own, so
@@ -383,6 +462,10 @@ function start_ticking(get_display_name) {
 				var display_name = await get_display_name(name);
 				if (!display_name) continue;
 				var config = connections[name].config || {};
+				if (config.mode === "idle") {
+					await local_eval(display_name, build_idle_code());
+					continue;
+				}
 				if (config.mode === "merchant") {
 					var target_names = [];
 					for (var t = 0; t < (config.mluck_targets || []).length; t++) {
@@ -432,4 +515,5 @@ module.exports = {
 	connections: connections,
 	raw_eval: raw_eval,
 	local_eval: local_eval,
+	transfer_item: transfer_item,
 };
