@@ -63,6 +63,51 @@ scripts/dev/down.sh        # stop everything (rm -rf ~/.al-dev for a fresh world
 
 A change is only called fixed once it has been seen working in the browser this way.
 
+### Baseline database (`dev-data/`)
+
+Every test starts from the same world: `dev-data/baseline.archive.gz` (a `mongodump --gzip` archive, ~2.4 MB).
+`up.sh` restores it automatically when `~/.al-dev` has an empty database.
+
+- Contents: the 112 maps and 2 uploads from the upstream dev datastore, plus account `tester` / `tester`
+  (admin) with Kingmartell (warrior), Burt (ranger) and Healz (priest), all **level 20** with spare gear in their
+  bags, and the **tutorial marked finished**. Level 1 characters always get the tutorial or Guide menu on login
+  (`js/game.js`), which covered the game in early screenshots.
+- `dev-data/tester.cookie` is the matching login cookie (dev database only; worthless against production).
+- Taken with the web and game servers stopped, so every character is saved offline and `SR_USI` is not locked.
+- Refresh it after changing `seed-account.js`: `scripts/dev/down.sh`, start only mongod, then
+  `mongodump --uri="mongodb://127.0.0.1:27017/adventureland?replicaSet=rs0" --archive=dev-data/baseline.archive.gz --gzip`.
+- Rebuild from nothing: `rm -rf ~/.al-dev && AL_DEV_FROM_SCRATCH=1 scripts/dev/up.sh`.
+
+## Handoff — state as of 2026-10-09
+
+For the next agent or session picking this up. Branch: `claude/charming-knuth-n2tq3s` (not merged; `main` deploys).
+
+**Done on this branch**
+1. `docs/RUNBOOK.md` with decision D-001 (party screen, gear swap, bot rework — accepted, not built) and the
+   2026-10-09 stack review (D-002, proposed).
+2. Run-without-Docker tooling in `scripts/dev/`: `up.sh`, `down.sh`, `smoke.js`, `seed-account.js`,
+   `session-start.sh` (wired to `.claude/settings.json` SessionStart).
+3. Small code changes so the game runs outside the image, production unchanged: `keys.js` derives keys from
+   `AL_DEV_SECRET`; `options.js` template has `msgpack_path`; `main.js` skips rewriting `version.js` in dev mode.
+4. Baseline database in `dev-data/` (above).
+
+**Verified in the browser**: login as Kingmartell at level 20 with no tutorial/guide popup; pressing `I` opens
+the party overlay with empty gear slots (the D-001 data bug, reproduced). A blank box in the top-left of
+early screenshots is just map tiles still loading; `smoke.js` now waits 8 s.
+
+**Open question for the user**: restructure fork code into `game/fork/` first (recommended), or build D-001 in
+place.
+
+**Next steps**
+1. Get the user's answer on the restructure, then build D-001 steps 1–5 in order, checking each with
+   `smoke.js` (extend it per feature: drag item between characters, equip on another character, bot moves).
+2. Then the D-002 items the user picks, starting with S1 (check production `unsecure_admin`).
+
+**Gotchas**
+- `pkill -f 'node main.js'` matches the shell running it; stop things with `scripts/dev/down.sh`.
+- The game server takes several seconds to deregister on SIGTERM; `down.sh` waits up to 30 s per process.
+- The repo's npm `package-lock.json` files are not committed (D-002 R2); `npm install` resolves fresh.
+
 ## Decisions
 
 ### D-001 — Party screen, gear swapping and companion bots (2026-10-09)

@@ -14,6 +14,12 @@ if ! command -v mongod >/dev/null; then
 	ln -sf /opt/$MONGO/bin/* /usr/local/bin/
 fi
 
+TOOLS=mongodb-database-tools-ubuntu2204-x86_64-100.10.0
+if ! command -v mongorestore >/dev/null; then
+	curl -fsSL "https://fastdl.mongodb.org/tools/db/$TOOLS.tgz" | tar -xz -C /opt
+	ln -sf /opt/$TOOLS/bin/* /usr/local/bin/
+fi
+
 [ -d "$REPO/game/node_modules" ] || (cd "$REPO/game" && npm install --omit=dev --no-audit --no-fund >/dev/null)
 [ -d "$REPO/game/node/node_modules" ] || (cd "$REPO/game/node" && npm install --omit=dev --no-audit --no-fund >/dev/null)
 [ -d "$REPO/scripts/dev/node_modules" ] || (cd "$REPO/scripts/dev" && npm install --no-audit --no-fund >/dev/null)

@@ -28,7 +28,7 @@ const executablePath = fs.existsSync("/opt/pw-browsers/chromium") ? "/opt/pw-bro
 		.waitForFunction(() => window.character && window.character.name, null, { timeout: 30000 })
 		.then(() => true)
 		.catch(() => false);
-	await page.waitForTimeout(2000);
+	await page.waitForTimeout(8000); // map tiles finish drawing a few seconds after login
 	await page.screenshot({ path: path.join(out, "01-ingame.png") });
 	await page.keyboard.press("i");
 	await page.waitForTimeout(1500);

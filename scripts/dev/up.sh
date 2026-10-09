@@ -2,7 +2,9 @@
 # Dev only: run the whole game without Docker - mongod (single-node replica
 # set), the web backend and the game server - the same three processes
 # scripts/entrypoint.sh runs inside the image. Idempotent: anything already
-# running is left alone, map data and the test account are only seeded once.
+# running is left alone. An empty database is restored from
+# dev-data/baseline.archive.gz (set AL_DEV_FROM_SCRATCH=1 to rebuild it from
+# the upstream map import + seed-account.js instead).
 #
 #   scripts/dev/up.sh      start everything, print the login cookie
 #   scripts/dev/down.sh    stop everything (data is kept in ~/.al-dev)
@@ -48,7 +50,14 @@ MAPS=$(mongo_node '
 const { MongoClient } = require("mongodb");
 (async () => { const c = new MongoClient(process.env.MONGODB_URI); await c.connect();
 console.log(await c.db("adventureland").collection("map").countDocuments()); await c.close(); })();')
-if [ "$MAPS" = "0" ]; then
+BASELINE="$REPO/dev-data/baseline.archive.gz"
+if [ "$MAPS" = "0" ] && [ -z "${AL_DEV_FROM_SCRATCH:-}" ] && [ -f "$BASELINE" ]; then
+	# The shared starting point: map data plus the tester account and party,
+	# tutorial finished. See "Baseline database" in docs/RUNBOOK.md.
+	echo "[dev] restoring baseline database"
+	mongorestore --quiet --uri="$MONGODB_URI" --archive="$BASELINE" --gzip --drop
+	cp "$REPO/dev-data/tester.cookie" "$DEV/cookie"
+elif [ "$MAPS" = "0" ]; then
 	echo "[dev] importing map data (one time)"
 	[ -f "$DEV/db.rdbms" ] || curl -fsSL -o "$DEV/db.rdbms" https://raw.githubusercontent.com/kaansoral/adventureland-appserver/main/storage/db.rdbms
 	[ -x "$DEV/venv/bin/python" ] || { python3 -m venv "$DEV/venv" && "$DEV/venv/bin/pip" -q install pymongo; }

@@ -12,9 +12,9 @@ for name in game web; do
 			kill -9 "$pid" 2>/dev/null
 			echo "[dev] stopped $name"
 		fi
-		rm -f "$DEV/$name.pid"
+		rm -f "${DEV:?}/$name.pid"
 	fi
 done
 mongod --dbpath "$DEV/db" --shutdown >/dev/null 2>&1 && echo "[dev] stopped mongod"
-rm -f "$DEV/mongod.pid"
+rm -f "${DEV:?}/mongod.pid"
 exit 0
