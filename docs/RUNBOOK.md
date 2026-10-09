@@ -92,8 +92,10 @@ For the next agent or session picking this up. Branch: `claude/charming-knuth-n2
 4. Baseline database in `dev-data/` (above).
 
 **Verified in the browser**: login as Kingmartell at level 20 with no tutorial/guide popup; pressing `I` opens
-the party overlay with empty gear slots (the D-001 data bug, reproduced). A blank box in the top-left of
-early screenshots is just map tiles still loading; `smoke.js` now waits 8 s.
+the party overlay with empty gear slots (the D-001 data bug, reproduced). A blank white box in the top-left of
+early screenshots was a headless-Chromium WebGL artifact, not the game; `smoke.js` now launches with SwiftShader
+(`--use-gl=angle --use-angle=swiftshader`) and the screen renders cleanly. Fresh start from an empty
+`~/.al-dev` restores the baseline and passes `smoke.js`.
 
 **Open question for the user**: restructure fork code into `game/fork/` first (recommended), or build D-001 in
 place.
