@@ -97,13 +97,15 @@ early screenshots was a headless-Chromium WebGL artifact, not the game; `smoke.j
 (`--use-gl=angle --use-angle=swiftshader`) and the screen renders cleanly. Fresh start from an empty
 `~/.al-dev` restores the baseline and passes `smoke.js`.
 
-**Open question for the user**: restructure fork code into `game/fork/` first (recommended), or build D-001 in
-place.
+**Decided 2026-10-09**: move the fork code first (D-003), then build D-001 on top of it.
 
 **Next steps**
-1. Get the user's answer on the restructure, then build D-001 steps 1–5 in order, checking each with
-   `smoke.js` (extend it per feature: drag item between characters, equip on another character, bot moves).
-2. Then the D-002 items the user picks, starting with S1 (check production `unsecure_admin`).
+1. Do D-003: move fork code into `game/fork/` and `game/js/fork/` with no behavior change. Run `smoke.js`
+   before and after; open the admin panel, Party Command Center, event HUD, fast travel and right-click menu in
+   the browser to confirm they still work.
+2. Build D-001 steps 1–5 in order inside the new layout, checking each with `smoke.js` (extend it per feature:
+   drag an item between characters, equip on another character, bot moves and attacks).
+3. Then the D-002 items the user picks, starting with S1 (check production `unsecure_admin`).
 
 **Gotchas**
 - `pkill -f 'node main.js'` matches the shell running it; stop things with `scripts/dev/down.sh`.
@@ -155,8 +157,34 @@ past rounds were marked fixed without being played.
 
 ### D-002 — Stack review follow-ups (2026-10-09)
 
-**Status:** proposed. See the review below; decide which items to take before D-001 is built, because the
-restructure option changes where D-001's code goes.
+**Status:** proposed, except W3 (restructure), which is accepted as D-003. See the review below.
+
+### D-003 — Move fork code out of the upstream files before building D-001 (2026-10-09)
+
+**Status:** accepted, not yet done. Comes before D-001.
+
+**Context.** Fork changes are spread through very large upstream files: about 550 lines of admin/party HTML and
+routes inline in `game/main.js`, nine patch sites in `game/node/server.js` (16k lines), plus `api.js`,
+`adventure_functions.js`, `js/functions.js`, `js/html.js` and the HTML templates. That makes each change risky to
+edit and makes picking up upstream changes later a manual hunt.
+
+**Decision.** Move the code, not the history (no rebase or force-push; ordinary commits on the branch):
+
+| Now | Moves to |
+|---|---|
+| `bots.js`, `settings.js`, `script_sync.js` | `game/fork/` (update the `require` paths in `main.js` and `node/server.js`) |
+| Admin panel, Party Command Center and `/events_status` routes inline in `main.js` | `game/fork/web_routes.js`, loaded from `main.js` with the same `eval(fs.readFileSync(...))` pattern `main.js` already uses for `mcp_api.js`, so it keeps access to `app`, `db`, `get_user`, `is_admin` and `G` |
+| Admin panel / party page HTML strings | `game/fork/views/` |
+| `js/event_hud.js`, `fast_travel.js`, `switch_character.js`, `party_control.js`, `party_command_center.js` | `game/js/fork/` (update the `<script>` tags in `htmls/index.html` and `htmls/comm.html`) |
+| `node/server.js` patch sites | Stay where they are when they're a line or two inside upstream logic (drm, inventory size, aggro/respawn multipliers, authfail clear, party auto-accept). The new `fast_travel` socket handler and the settings hookup move into `game/fork/server_hooks.js`, called from one line in `server.js` |
+| `api.js` / `adventure_functions.js` username login | Stays (it's woven into the signup transaction); keep the `[private fork]` markers |
+
+Every patch that stays in an upstream file keeps a one-line `// [private fork]` marker pointing at the fork module
+or this decision. `game/README-FORK.md` gets a list of every remaining patch site.
+
+**Rules for the move.** No behavior changes in the same commits; one commit per area so each can be checked on its
+own; the Dockerfile copies `game/` whole, so no build changes are needed, but confirm with `smoke.js` and a manual
+click-through after each commit.
 
 ## Stack review — 2026-10-09
 
