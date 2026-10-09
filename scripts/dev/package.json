@@ -1,0 +1,8 @@
+{
+	"name": "al-dev-tools",
+	"private": true,
+	"description": "Dev-only tooling for running and playtesting the game without Docker",
+	"dependencies": {
+		"playwright": "1.56.0"
+	}
+}

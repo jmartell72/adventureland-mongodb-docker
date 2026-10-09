@@ -3,3 +3,4 @@ node_modules/
 .env
 .omc/
 /character-scripts/
+/game/secretsandconfig/settings.json

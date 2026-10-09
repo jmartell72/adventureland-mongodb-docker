@@ -42,6 +42,27 @@ docker compose -f docker-compose.prod.yml restart
 **Change server settings** — `https://al.<domain>/admin/panel`, or edit `$DATA_DIR/secretsandconfig/settings.json`
 (picked up within ~2 s; the Discord token needs a restart).
 
+## Developing without Docker (cloud sessions and local)
+
+The whole game runs from the repo without Docker: the same three processes the image runs (mongod as a
+single-node replica set, `main.js`, `node/server.js`), with data in `~/.al-dev`.
+
+```sh
+scripts/dev/up.sh          # start everything; first run imports map data and creates the test account
+node scripts/dev/smoke.js  # log in as Kingmartell in headless Chromium, press I, save screenshots
+scripts/dev/down.sh        # stop everything (rm -rf ~/.al-dev for a fresh world)
+```
+
+- Test account: `tester` / `tester`, admin, with Kingmartell (warrior), Burt (ranger) and Healz (priest).
+- Logs: `~/.al-dev/logs/{web,game,mongod}.log`. Screenshots: `~/.al-dev/screenshots`.
+- In Claude Code cloud sessions, `.claude/settings.json` runs `scripts/dev/session-start.sh` at startup, which
+  installs MongoDB 7.0 and the npm dependencies. It needs network access to `fastdl.mongodb.org` and
+  `raw.githubusercontent.com` (map data); the environment has full network access as of 2026-10-09.
+- `AL_DEV_SECRET` (set by `up.sh`) makes `secretsandconfig/keys.js` derive its keys instead of randomizing them,
+  so both processes agree on `ACCESS_MASTER`, and stops `main.js` rewriting `version.js`. The image never sets it.
+
+A change is only called fixed once it has been seen working in the browser this way.
+
 ## Decisions
 
 ### D-001 — Party screen, gear swapping and companion bots (2026-10-09)
@@ -118,7 +139,7 @@ itself was not checked from outside.
 
 | # | Finding | Fix |
 |---|---|---|
-| W1 | Nothing was played end-to-end before being marked fixed. The cloud session cannot run Docker or download MongoDB, and its network policy blocks `al.personalphantompalace.com`. | Either add the domain to the cloud environment's allowed domains, or register the game as a `qa_test` target in the Private AI MCP browser so a session can log in and click through. The CI smoke test in R3 covers the rest. |
+| W1 | Nothing was played end-to-end before being marked fixed. | **Done 2026-10-09:** full network access granted; `scripts/dev/` runs and playtests the game inside a cloud session (see "Developing without Docker"). The CI smoke test in R3 is still worth adding for the Docker image itself. |
 | W2 | All work was committed straight to `main`, which deploys on every push. | Work on branches and open PRs; deploy from `main` only after CI passes. |
 | W3 | Fork code is spread through very large upstream files (`node/server.js` 16k lines, `main.js` with ~550 lines of inline admin/party HTML). Hard to edit safely and hard to merge upstream later. | Restructure: move fork code into `game/fork/` (server routes, bots, party API) and `game/js/fork/` (client UI), leaving one-line hooks in the upstream files. Not a history rewrite — a normal set of commits. |
 

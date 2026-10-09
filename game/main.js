@@ -22,7 +22,11 @@ if (keys.mongodb_uri) {
 eval("" + fs.readFileSync(path.resolve(__dirname, "version.js")));
 var update_notes = require("./update_notes.js");
 var latest_steam_news = require("./steam_news.js").create_news_loader();
-if (Local) {
+if (Local && process.env.AL_DEV_SECRET) {
+	// [private fork] scripts/dev/up.sh: bust the client cache on every start
+	// without rewriting the tracked version.js file.
+	Version = Math.floor(Date.now() / 1000);
+} else if (Local) {
 	const filePath = path.join(__dirname, "version.js");
 	let lines = fs.readFileSync(filePath, "utf-8").split("\n");
 	lines[0] = lines[0].replace(/Version\s*=\s*(\d+);/, (match, p1) => {
